@@ -1,0 +1,17 @@
+Version Control Log:
+
+12/28/19(12:43 am):
+
+
+-Started project, implemented getopt function.
+-made elementary input.dat file to test
+-Program is able to able to display contents of the input.dat file.
+-Added version log
+
+	(1:12 am):
+
+-Implemented makefile, which makes and cleans.
+	TO-DO:
+	-Use fgets to read one line at a time
+	-Implement fork
+ 
