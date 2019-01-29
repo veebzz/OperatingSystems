@@ -12,9 +12,10 @@ Practice making system calls with the use of getopt, fork, and perror
 
 int main(int argc, char **argv)
 {
-	int optionIndex;
+	int optionIndex, numOfForks;
 	char *fileName = NULL;
 	opterr = 0;
+	
 
 	while ((optionIndex = getopt(argc, argv, ":hi::o::")) != -1)
 	{
@@ -33,19 +34,26 @@ int main(int argc, char **argv)
 				}
 				fileName = optarg;
 				printf("Input File: %s\n",fileName);
-
+				printf("Opening File...\n");
 				FILE* in_file = fopen(fileName, "r");
+				if(in_file == NULL)
+				{
+					printf("Could not open file\n");
+					return 1;
+				}
 				if(in_file != NULL)
 				{
-					char numbers[50];
-					while(fgets(numberBuffer, sizeof numbers, in_file))
+					printf("File opened successfully!\n");
+					char numberBuffer[50];
+					while(fgets(numberBuffer, sizeof numberBuffer, in_file))
 					{
-						if(*numberBuffer == '/n')
-						{
-							printf("%s\n",numberBuffer);
-						}
+						printf("%s\n", numberBuffer);
 					}
+					
 				}
+				printf("Closing File...\n");
+				fclose(in_file);
+				
 				break;
 			case 'o':
 				if(optarg == NULL)
