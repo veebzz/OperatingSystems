@@ -1,5 +1,6 @@
 #CS 4760 Assignment #1
-This README has been written using markdown language. It is better viewed on the 
+This README has been written using markdown language.
+ 
 ##Usage
 
 Within the project directory use make to compile the source files.
@@ -22,6 +23,9 @@ The makefile also includes a clean function which removes the executable, object
 make clean
 ```
 
+##Version Log
+
+Github was used as version control for this assignment. The link to this assignments version control is [Github](https://github.com/veebzz/OperatingSystems/commits/master).
 
 ##Existing Problems
 ..* The program throws a huge error when the dynamic memory is released with the free function. Though it displays big error text, the program still finishes its job.
