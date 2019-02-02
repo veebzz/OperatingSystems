@@ -27,10 +27,9 @@ int main(int argc, char **argv) {
     if(argc < 2){
         inputFileName = "input.dat";
         outputFileName = "output.dat";
-        goto missingArguments;
     }
 
-    while ((optionIndex = getopt(argc, argv, ":hi:o:")) != -1) {
+    while ((optionIndex = getopt(argc, argv, "::hi:o:")) != -1) {
         switch (optionIndex) {
             case 'h':
                 printf("List of valid command line argument usage\n");
@@ -39,29 +38,15 @@ int main(int argc, char **argv) {
                 printf("-o <argument> :  This option will output data from the program to the given file name\n\t\t argument. If no argument is provided, (output.dat) will be used as a\n\t\t default argument.\n");
                 break;
             case 'i':
-            missingArguments:
                 if (optarg == NULL) {
                     printf("Caution: No file name provided. \nDefault file name [input.dat] will be assumed.\n");
                     optarg = "input.dat";
-                    //delete output.dat file if it exists
-
-
                 }
-
                 inputFileName = optarg;
-//            inputArgumentMissing:
-                printf("Input File: %s\n", inputFileName);
-                printf("Opening File...\n");
-                FILE *in_file = fopen(inputFileName, "r");
-                if (in_file == NULL) {
-                    perror("fileError: ");
-                    return 1;
-                }else{
-                    inputProcessFile(in_file, outputFileName);                                                     //***
+
+                if(outputFileName == NULL){
+                    outputFileName = "output.dat";
                 }
-                fclose(in_file);
-                printf("\n__________________________________\n");
-                printf("\nParent Process [%d] Finished.\n", getpid());
                 break;
 
             case 'o':
@@ -70,23 +55,32 @@ int main(int argc, char **argv) {
                     optarg = "output.dat";
                 }
                 outputFileName = optarg;
-                //Creating output file if it doesnt exist or
-                //Clearing any previous content from output file
-                FILE *out_file = fopen(outputFileName, "w+");
-                fclose(out_file);
+
                 printf("Output File: %s\n", outputFileName);
-//                //If only the output was given
-//                if(inputFileName == NULL){
-//                    inputFileName = "input.dat";
-//                    goto inputArgumentMissing;
-//                }
-                goto missingArguments;
+                //If only the output was given
+                if(inputFileName == NULL){
+                    inputFileName = "input.dat";
+                }
                 break;
             default:
-                printf("%s: Error: Incomplete argument usage.\n Use '-h' argument for valid usage instructions.\n\n Example: ./syscall -h\n", argv[0]);
-                break;
+                printf("%s: Argument Error: Incorrect argument usage.\n Use '-h' argument for valid usage instructions.\n\n Example: ./syscall -h\n\n", argv[0]);
+                exit(0);
         }
     }
+    printf("Input File: %s\n", inputFileName);
+    printf("Output File: %s\n", outputFileName);
+    printf("Opening input file...\n");
+    FILE *in_file = fopen(inputFileName, "r");
+    if (in_file == NULL) {
+        perror("./syscall: fileError: ");
+        return 1;
+    }else{
+        printf("File opened successfully!\n");
+        inputProcessFile(in_file, outputFileName);                                                     //***
+    }
+    fclose(in_file);
+    printf("\n__________________________________\n");
+    printf("\nParent Process [%d] Finished.\n", getpid());
 
     return 0;
 }
@@ -114,8 +108,8 @@ int inputProcessFile(FILE* in_file, char *outputFileName) {
         child_pid = fork();
         if (child_pid == 0) {
             //I am child
-            childFunction(in_file, outputFileName);                                                                     //***
-            exit(0); // exit here to stop child process from copying the parent process
+            childFunction(in_file, outputFileName);
+            exit(0); // exit here to stop child process from copying the rest of parent process
         } else {
             //I am parent
             *(childPidArray+i)= child_pid; //store child PID into childPidArray
@@ -206,7 +200,7 @@ int childFunction(FILE *in_file, char *outputFileName) {
     fclose(out_file);
     printf("\nChild Process [%d] Finished.\n", getpid());
 
-    //free(processNumberArray); causing error when trying to free memory
+//    free(processNumberArray);// causing error when trying to free memory
     return 0;
 }
 
