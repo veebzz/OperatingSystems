@@ -13,4 +13,4 @@ main.o: main.c
 
 
 clean:
-	/bin/rm -f *.o $(TARGET)
+	/bin/rm -f *.o output.dat $(TARGET)

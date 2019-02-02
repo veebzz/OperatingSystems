@@ -14,15 +14,23 @@ Practice making system calls with the use of getopt, fork, and perror
 #include <sys/wait.h>
 
 
-int childFunction(FILE *in_file);
-int inputProcessFile(FILE *in_file);
+int childFunction(FILE *in_file, char *outputFileName);
+int inputProcessFile(FILE *in_file, char *outputFileName);
+
 
 int main(int argc, char **argv) {
     int optionIndex;
-    char *fileName = NULL;
+    char *inputFileName = NULL;
+    char *outputFileName = NULL;
     opterr = 0;
+    //check if arguments are given
+    if(argc < 2){
+        inputFileName = "input.dat";
+        outputFileName = "output.dat";
+        goto missingArguments;
+    }
 
-    while ((optionIndex = getopt(argc, argv, ":hi::o::")) != -1) {
+    while ((optionIndex = getopt(argc, argv, ":hi:o:")) != -1) {
         switch (optionIndex) {
             case 'h':
                 printf("List of valid command line argument usage\n");
@@ -31,34 +39,51 @@ int main(int argc, char **argv) {
                 printf("-o <argument> :  This option will output data from the program to the given file name\n\t\t argument. If no argument is provided, (output.dat) will be used as a\n\t\t default argument.\n");
                 break;
             case 'i':
+            missingArguments:
                 if (optarg == NULL) {
+                    printf("Caution: No file name provided. \nDefault file name [input.dat] will be assumed.\n");
                     optarg = "input.dat";
-                }
-                fileName = optarg;
-                printf("Input File: %s\n", fileName);
-                printf("Opening File...\n");
-                FILE *in_file = fopen(fileName, "r");
-                if (in_file == NULL) {
-                    printf("Could not open file\n");
-                    return 1;
-                }
-                if (in_file != NULL) {
-                    inputProcessFile(in_file);
+                    //delete output.dat file if it exists
+
+
                 }
 
-                printf("Closing File...%d\n", getpid());
+                inputFileName = optarg;
+//            inputArgumentMissing:
+                printf("Input File: %s\n", inputFileName);
+                printf("Opening File...\n");
+                FILE *in_file = fopen(inputFileName, "r");
+                if (in_file == NULL) {
+                    perror("fileError: ");
+                    return 1;
+                }else{
+                    inputProcessFile(in_file, outputFileName);                                                     //***
+                }
                 fclose(in_file);
+                printf("\n__________________________________\n");
+                printf("\nParent Process [%d] Finished.\n", getpid());
                 break;
 
             case 'o':
+                //set output file to output.dat if no argument given
                 if (optarg == NULL) {
                     optarg = "output.dat";
                 }
-                fileName = optarg;
-                printf("Output File: %s\n", fileName);
+                outputFileName = optarg;
+                //Creating output file if it doesnt exist or
+                //Clearing any previous content from output file
+                FILE *out_file = fopen(outputFileName, "w+");
+                fclose(out_file);
+                printf("Output File: %s\n", outputFileName);
+//                //If only the output was given
+//                if(inputFileName == NULL){
+//                    inputFileName = "input.dat";
+//                    goto inputArgumentMissing;
+//                }
+                goto missingArguments;
                 break;
             default:
-                printf("a.out: Error: Incomplete argument usage. Use '-h' argument for valid usage instructions.\n\n Example: ./a.out -h\n");
+                printf("%s: Error: Incomplete argument usage.\n Use '-h' argument for valid usage instructions.\n\n Example: ./syscall -h\n", argv[0]);
                 break;
         }
     }
@@ -67,13 +92,71 @@ int main(int argc, char **argv) {
 }
 
 
-int childFunction(FILE *in_file) {
+int inputProcessFile(FILE* in_file, char *outputFileName) {
+    int i, numOfForks = 0, status = 0;
     char fileBuffer[256];
-    int numbersToRead, i;
+    pid_t child_pid, wait_pid;
+
+    printf("File opened successfully!\n");
+
+    //Read number of forks from the first line
+    fgets(fileBuffer, sizeof fileBuffer, in_file);
+    numOfForks = atoi(fileBuffer);
+    //Dynamically allocate integer array to store child PIDs
+    int *childPidArray = malloc(numOfForks * sizeof(int));
+
+    printf("Number of Forks: %d\n", numOfForks);
+    printf("Parent Process %d\n", getpid());
+    printf("__________________________________\n");
+
+    //Parent/Child fork control
+    for (i = 0; i < numOfForks; i++) {
+        child_pid = fork();
+        if (child_pid == 0) {
+            //I am child
+            childFunction(in_file, outputFileName);                                                                     //***
+            exit(0); // exit here to stop child process from copying the parent process
+        } else {
+            //I am parent
+            *(childPidArray+i)= child_pid; //store child PID into childPidArray
+            //advance 2 lines
+            fgets(fileBuffer, sizeof(fileBuffer), in_file);
+            fgets(fileBuffer, sizeof(fileBuffer), in_file);
+            //wait until child dies
+            while ((wait_pid = wait(&status)) == child_pid);
+        }
+    }
+    //Check if passed output file name is NULL , if not use default output file name
+    if(outputFileName == NULL){
+        outputFileName = "output.dat";
+    }
+
+    FILE* out_file = fopen(outputFileName, "a+");
+    if (out_file == NULL) {
+        perror("fileError: ");
+        return 1;
+    }
+    for(i = 0; i < numOfForks; i++) {
+        if (i == 0) {
+            //Including Parent PID to show the parent is writing this
+            fprintf(out_file, "Parent[%d] had %d child processes: %d", getpid(), numOfForks, *(childPidArray + i));
+        } else if (i == numOfForks - 1) {
+            //adding newline to EOF
+            fprintf(out_file, " %d\n", *(childPidArray + i));
+        } else {
+            fprintf(out_file, " %d", *(childPidArray + i));
+        }
+    }
+    fclose(out_file);
+}
+
+int childFunction(FILE *in_file, char *outputFileName) {
+    char fileBuffer[256];
+    int numbersToRead, i = 0;
     const char space[2] = " ";
     char *token;
 
-    printf("Child Process: %d \n", getpid());
+    printf("\nChild Process: %d \n", getpid());
     //first line
     fgets(fileBuffer, sizeof fileBuffer, in_file);
     numbersToRead = atoi(fileBuffer);
@@ -82,10 +165,11 @@ int childFunction(FILE *in_file) {
     fgets(fileBuffer, sizeof(fileBuffer), in_file);
     token = strtok(fileBuffer, space);
 
-    i = 0;
-    while (token != NULL) {
-        *(processNumberArray+i) = atoi(token);
-        i++;
+
+    while (token != NULL) {                         //while token is not null
+        *(processNumberArray+i) = atoi(token);      //turn the token into an int, and have pointer point to it
+        i++;                                        //increment pointer like an array
+        //If there are more numbers than instructed to read then break
         if (i > numbersToRead){
             break;
         }
@@ -93,52 +177,37 @@ int childFunction(FILE *in_file) {
     }
     printf("Numbers to read: %d\n", numbersToRead);
 
-    for (i = 0; i < numbersToRead; i++) {
-
-        printf("%d ", *(processNumberArray + (numbersToRead-i-1)));
+    //Open output file
+    FILE* out_file = fopen(outputFileName, "a+");
+    if (out_file == NULL) {
+        perror("fileError: ");
+        return 1;
+    }
+    //print to stream in correct order
+    for (i = 0; i < numbersToRead; i++){
+        printf("%d ", *(processNumberArray+i));
     }
     printf("\n");
-    //free(processNumberArray);
-    return 0;
-}
-
-int inputProcessFile(FILE* in_file) {
-    int i, numOfForks;
-    char fileBuffer[256];
-    pid_t child_pid, wpid;
-    int status = 0;
-
-    printf("File opened successfully!\n");
-
-    fgets(fileBuffer, sizeof fileBuffer, in_file);
-    numOfForks = atoi(fileBuffer);
-
-    int *childPidArray = malloc(numOfForks * sizeof(int));
-    printf("Number of Forks: %d\n", numOfForks);
-
-    printf("Parent Process %d\n", getpid());
-
-    for (i = 0; i < numOfForks; i++) {
-        child_pid = fork();
-        if (child_pid == 0) {
-            //I am child
-            childFunction(in_file);
-            exit(0);
-        } else {
-            // parent
-            // advance file reading by 2 lines
-            *(childPidArray+i)= child_pid;
-            fgets(fileBuffer, sizeof(fileBuffer), in_file);
-            fgets(fileBuffer, sizeof(fileBuffer), in_file);
-            while ((wpid = wait(&status)) == child_pid);
+    //Reverse Numbers
+    for (i = 0; i < numbersToRead; i++) {
+        //print to stream
+        printf("%d ", *(processNumberArray + (numbersToRead-i-1)));
+        //write to output file
+        if(i == 0){
+            //Place PID in the beginning
+            fprintf(out_file,"%d: %d",getpid(), *(processNumberArray + (numbersToRead-i-1)));
+        }else if(i == numbersToRead - 1){
+            //Place newline at the end of the last number
+            fprintf(out_file, " %d\n", *(processNumberArray + (numbersToRead - i - 1)));
+        }else{
+            fprintf(out_file, " %d", *(processNumberArray + (numbersToRead - i - 1)));
         }
     }
+    fclose(out_file);
+    printf("\nChild Process [%d] Finished.\n", getpid());
 
-    printf("All children were:");
-    for(i = 0; i < numOfForks; i++){
-        printf("%d ", *(childPidArray+i));
-    }
-    printf("\n");
+    //free(processNumberArray); causing error when trying to free memory
+    return 0;
 }
 
 
