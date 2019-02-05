@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
     char *outputFileName = NULL;
     opterr = 0;
     //check if arguments are given
-    if(argc < 2){
+    if (argc < 2) {
         inputFileName = "input.dat";
         outputFileName = "output.dat";
     }
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
                 }
                 inputFileName = optarg;
 
-                if(outputFileName == NULL){
+                if (outputFileName == NULL) {
                     outputFileName = "output.dat";
                 }
                 break;
@@ -58,12 +58,13 @@ int main(int argc, char **argv) {
 
                 printf("Output File: %s\n", outputFileName);
                 //If only the output was given
-                if(inputFileName == NULL){
+                if (inputFileName == NULL) {
                     inputFileName = "input.dat";
                 }
                 break;
             default:
-                printf("%s: Argument Error: Incorrect argument usage.\n Use '-h' argument for valid usage instructions.\n\n Example: ./syscall -h\n\n", argv[0]);
+                printf("%s: Argument Error: Incorrect argument usage.\n Use '-h' argument for valid usage instructions.\n\n Example: ./syscall -h\n\n",
+                       argv[0]);
                 exit(0);
         }
     }
@@ -74,7 +75,7 @@ int main(int argc, char **argv) {
     if (in_file == NULL) {
         perror("./syscall: fileError: ");
         return 1;
-    }else{
+    } else {
         printf("File opened successfully!\n");
         inputProcessFile(in_file, outputFileName);                                                     //***
     }
@@ -109,6 +110,7 @@ int inputProcessFile(FILE* in_file, char *outputFileName) {
         if (child_pid == 0) {
             //I am child
             childFunction(in_file, outputFileName);
+
             exit(0); // exit here to stop child process from copying the rest of parent process
         } else {
             //I am parent
@@ -142,6 +144,7 @@ int inputProcessFile(FILE* in_file, char *outputFileName) {
         }
     }
     fclose(out_file);
+    return 0;
 }
 
 int childFunction(FILE *in_file, char *outputFileName) {
@@ -199,8 +202,11 @@ int childFunction(FILE *in_file, char *outputFileName) {
     }
     fclose(out_file);
     printf("\nChild Process [%d] Finished.\n", getpid());
+    //If the last token is reached then free processNumberArray
+    if(token == NULL) {
+        free(processNumberArray);// causing error when trying to free memory by itself
+    }
 
-//    free(processNumberArray);// causing error when trying to free memory
     return 0;
 }
 
