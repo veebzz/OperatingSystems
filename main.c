@@ -15,6 +15,7 @@ Practice making system calls with the use of getopt, fork, and perror
 
 
 int childFunction(FILE *in_file, char *outputFileName);
+
 int inputProcessFile(FILE *in_file, char *outputFileName);
 
 
@@ -76,7 +77,6 @@ int main(int argc, char **argv) {
         perror("./syscall: fileError: ");
         return 1;
     } else {
-        printf("File opened successfully!\n");
         inputProcessFile(in_file, outputFileName);                                                     //***
     }
     fclose(in_file);
@@ -87,12 +87,12 @@ int main(int argc, char **argv) {
 }
 
 
-int inputProcessFile(FILE* in_file, char *outputFileName) {
-    int i, numOfForks = 0, status = 0;
+int inputProcessFile(FILE *in_file, char *outputFileName) {
+    int i, numOfForks = 0, status = 0, stopFlag;
     char fileBuffer[256];
     pid_t child_pid, wait_pid;
 
-    printf("File opened successfully!\n");
+    printf("Input file opened successfully!\n");
 
     //Read number of forks from the first line
     fgets(fileBuffer, sizeof fileBuffer, in_file);
@@ -104,35 +104,36 @@ int inputProcessFile(FILE* in_file, char *outputFileName) {
     printf("Parent Process %d\n", getpid());
     printf("__________________________________\n");
 
-    //Parent/Child fork control
-    for (i = 0; i < numOfForks; i++) {
-        child_pid = fork();
-        if (child_pid == 0) {
-            //I am child
-            childFunction(in_file, outputFileName);
 
-            exit(0); // exit here to stop child process from copying the rest of parent process
-        } else {
-            //I am parent
-            *(childPidArray+i)= child_pid; //store child PID into childPidArray
-            //advance 2 lines
-            fgets(fileBuffer, sizeof(fileBuffer), in_file);
-            fgets(fileBuffer, sizeof(fileBuffer), in_file);
-            //wait until child dies
-            while ((wait_pid = wait(&status)) == child_pid);
-        }
-    }
-    //Check if passed output file name is NULL , if not use default output file name
-    if(outputFileName == NULL){
-        outputFileName = "output.dat";
+
+    // Parent/Child fork control
+    for (i = 0; i < numOfForks - 1; i++) {
+            child_pid = fork();
+            if (child_pid == 0) {
+                //I am child
+                childFunction(in_file, outputFileName);
+                exit(0); // exit here to stop child process from copying the rest of parent process
+            } else {
+                //I am parent
+                //advance 2 lines
+                if (fgets(fileBuffer, sizeof(fileBuffer), in_file)) { // check if next line exists
+                    fgets(fileBuffer, sizeof(fileBuffer), in_file);
+                    *(childPidArray + i) = child_pid;
+                    while ((wait_pid = wait(&status)) == child_pid);
+                } else {
+                    numOfForks = i;//else change numOfForks to output correct number of processes read
+                    stopFlag++;
+                }
+            }
     }
 
-    FILE* out_file = fopen(outputFileName, "a+");
+    //Parent writes to output file
+    FILE *out_file = fopen(outputFileName, "a+");
     if (out_file == NULL) {
         perror("fileError: ");
         return 1;
     }
-    for(i = 0; i < numOfForks; i++) {
+    for (i = 0; i < numOfForks; i++) {
         if (i == 0) {
             //Including Parent PID to show the parent is writing this
             fprintf(out_file, "Parent[%d] had %d child processes: %d", getpid(), numOfForks, *(childPidArray + i));
@@ -144,6 +145,7 @@ int inputProcessFile(FILE* in_file, char *outputFileName) {
         }
     }
     fclose(out_file);
+    free(childPidArray);
     return 0;
 }
 
@@ -153,57 +155,66 @@ int childFunction(FILE *in_file, char *outputFileName) {
     const char space[2] = " ";
     char *token;
 
-    printf("\nChild Process: %d \n", getpid());
+
     //first line
-    fgets(fileBuffer, sizeof fileBuffer, in_file);
-    numbersToRead = atoi(fileBuffer);
-    int *processNumberArray = (int *)malloc(numbersToRead * sizeof(int));
+    if (fgets(fileBuffer, sizeof fileBuffer, in_file)) {//check to see if first line has data
+        token = strtok(fileBuffer, space);
+        numbersToRead = atoi(fileBuffer);
+    } else { //if fgets returns NULL return to inputProcessFile
+
+        return 0;
+    }
+
+    int *processNumberArray = (int *) malloc(numbersToRead * sizeof(int));
     //second line
     fgets(fileBuffer, sizeof(fileBuffer), in_file);
     token = strtok(fileBuffer, space);
 
 
+    printf("\nChild Process: %d \n", getpid());
+
     while (token != NULL) {                         //while token is not null
-        *(processNumberArray+i) = atoi(token);      //turn the token into an int, and have pointer point to it
+        *(processNumberArray + i) = atoi(token);
         i++;                                        //increment pointer like an array
         //If there are more numbers than instructed to read then break
-        if (i > numbersToRead){
+        if (i > numbersToRead) {
             break;
         }
         token = strtok(NULL, space);
     }
+
     printf("Numbers to read: %d\n", numbersToRead);
 
     //Open output file
-    FILE* out_file = fopen(outputFileName, "a+");
+    FILE *out_file = fopen(outputFileName, "a+");
     if (out_file == NULL) {
-        perror("fileError: ");
+        perror("syscall: File Error: ");
         return 1;
     }
     //print to stream in correct order
-    for (i = 0; i < numbersToRead; i++){
-        printf("%d ", *(processNumberArray+i));
+    for (i = 0; i < numbersToRead; i++) {
+        printf("%d ", *(processNumberArray + i));
     }
     printf("\n");
     //Reverse Numbers
     for (i = 0; i < numbersToRead; i++) {
         //print to stream
-        printf("%d ", *(processNumberArray + (numbersToRead-i-1)));
+        printf("%d ", *(processNumberArray + (numbersToRead - i - 1)));
         //write to output file
-        if(i == 0){
+        if (i == 0) {
             //Place PID in the beginning
-            fprintf(out_file,"%d: %d",getpid(), *(processNumberArray + (numbersToRead-i-1)));
-        }else if(i == numbersToRead - 1){
+            fprintf(out_file, "%d: %d", getpid(), *(processNumberArray + (numbersToRead - i - 1)));
+        } else if (i == numbersToRead - 1) {
             //Place newline at the end of the last number
             fprintf(out_file, " %d\n", *(processNumberArray + (numbersToRead - i - 1)));
-        }else{
+        } else {
             fprintf(out_file, " %d", *(processNumberArray + (numbersToRead - i - 1)));
         }
     }
     fclose(out_file);
     printf("\nChild Process [%d] Finished.\n", getpid());
     //If the last token is reached then free processNumberArray
-    if(token == NULL) {
+    if (token == NULL) {
         free(processNumberArray);// causing error when trying to free memory by itself
     }
 

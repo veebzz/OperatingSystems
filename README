@@ -29,7 +29,7 @@ Github was used as version control for this assignment. The link to this assignm
 
 Existing Problems
 
-The command line executable does not accept multiple option arguments such as:
+-The command line executable does not accept multiple option arguments such as:
 
 ./syscall -io <argument> <argument>
 
@@ -37,4 +37,10 @@ or
 
 ./syscall -oi <argument> <argument>
 
+-If the first line of the child process provides a number higher than the integers provides on the second line, the program will fill the missing numbers with 0.
 
+-If 0 is given in the first line of a child process, it does not write its pid and numbers to output. only the pid is displayed by parent.
+
+-If first line of input data states more number of forks than provided, the program will end at the last valid set of child process data.
+
+-If more than 1 number is provided on the first line or the first line of every child process, the program will only take the first number on that line
