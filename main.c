@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
                 }
                 inputFileName = optarg;
 
-                if (outputFileName == NULL) {
+                if (outputFileName == NULL) { //set output file to default if user only provides input data file
                     outputFileName = "output.dat";
                 }
                 break;
@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
 
                 printf("Output File: %s\n", outputFileName);
                 //If only the output was given
-                if (inputFileName == NULL) {
+                if (inputFileName == NULL) { //set input file to default if user only provides input data file
                     inputFileName = "input.dat";
                 }
                 break;
@@ -72,6 +72,7 @@ int main(int argc, char **argv) {
     printf("Input File: %s\n", inputFileName);
     printf("Output File: %s\n", outputFileName);
     printf("Opening input file...\n");
+
     FILE *in_file = fopen(inputFileName, "r");
     if (in_file == NULL) {
         perror("./syscall: fileError: ");
@@ -107,7 +108,7 @@ int inputProcessFile(FILE *in_file, char *outputFileName) {
 
 
     // Parent/Child fork control
-    for (i = 0; i < numOfForks - 1; i++) {
+    for (i = 0; i < numOfForks; i++) {
             child_pid = fork();
             if (child_pid == 0) {
                 //I am child
