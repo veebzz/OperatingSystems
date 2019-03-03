@@ -17,16 +17,19 @@ Concurrent UNIX processes and shared memory
 #include <sys/shm.h>
 
 
-
+key_t startSharedMemory();
+void incrementSharedMemory(key_t key, int value);
 
 int main(int argc, char **argv) {
     int optionIndex, maxForks = 0, maxActiveChildren = 0, activeChildren = 0;
     char *inputFileName = NULL;
     char *outputFileName = NULL;
+    char *fileBuffer[256];
+    const char space[2] = " ";
+    char *token;
     opterr = 0;
     int status = 0, i;
-    int *sharedInt1;
-    int *sharedInt2;
+    int incrementValue;
 
     pid_t child_pid, wait_pid;
     //check if arguments are given
@@ -97,83 +100,118 @@ int main(int argc, char **argv) {
     if (in_file == NULL) {
         perror("./oss: fileError: ");
         return 1;
-    } else {                                                    //****************
-       key_t key = ftok(".", 'x');
-        //allocate shared memory
-        int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
-        if (shmid < 0) {
-            perror("./user: shmid error: ");
-            return 1;
-        }
-        //attach shared memory
-        sharedInt1 = (int *) shmat(shmid, NULL, 0);
-
-        if (*sharedInt1 == -1) {
-            perror("./oss: shmat error: ");
-            return 1;
-        }
-
-        sharedInt1[0] = 9999;
-        printf("Data written in memory: %d\n", sharedInt1[0]);
-
-        shmdt((void *)sharedInt1);
-
-        child_pid = fork();
+    }
+    //***************
+    key_t key = startSharedMemory();
 
 
-        if (child_pid < 0) {                              //fork fail check
-            perror("./oss : forkError");
-            return 1;
-        }
-        else if(child_pid == 0){
-            char *arguments[] = {NULL};
-            execvp("./user", arguments);
+    fgets(fileBuffer, sizeof(fileBuffer), in_file); // read first line
+    token = strtok(fileBuffer, space);
+    incrementValue = atoi(fileBuffer);
+    printf("%d\n", incrementValue);
+
+
+    while (true){
+        incrementSharedMemory(key, incrementValue);
+        if ((duration = shouldCreateChild(activeChildren, maxActiveChildren, maxForks)) != -1) {
+            activeChildren++;
+            child_pid = forkChild(duration, outfileHandler);
+            //keep the pid array
         }
 
-        printf("Parent is making the Kool Aid dranks!!\n");
-        wait(NULL);
-        printf("Parent Finished\n");
-        return 0;
-//        for (i = 0; i < maxForks; i++) {
-//            printf("Number of Children Fork: %d \n", i + 1);
-//            while (activeChildren <= maxActiveChildren) {
-//                printf("Active child: %d\n", activeChildren);
-//                activeChildren++;
-//                i++;
-//                child_pid = fork();
-//
-//
-//                if (child_pid < 0) {                              //fork fail check
-//                    perror("./oss : forkError");
-//                    return 1;
-//                }
-//                if (child_pid == 0) {
-//                    //I am child
-//                    printf("I am child with pid: %d\n", getpid());
-//                    printf("Child terminating\n");
-//                    sleep(2);
-//                    activeChildren--;
-//                    exit(0);
-//                }
-//                    // exit here to stop child process from copying the rest of parent process
-//                 else {
-//                    //I am parent
-//                    printf("parent waiting\n");
-//                    while ((wait_pid = wait(&status)) == child_pid);
-//
-//                }
-//            }
-//
-//        }
+        checkForTerminatedChilden(pidArray, outfileHandle);
 
+        if (shouldExit()){
+            break;
+        }
     }
 
-    fclose(in_file);
-    printf("\n__________________________________\n");
-    printf("\nParent Process [%d] Finished.\n", getpid());
+    // release memory
+    shmctl(key,IPC_RMID,NULL);
 
+
+
+    printf("Parent Finished\n");
     return 0;
+
+}
+
+pid_t forkchild(int duration, FILE* outfilehandler){
+    pid_t child_pid = fork();
+
+    if (child_pid < 0) {                              //fork fail check
+        perror("./oss : forkError");
+        return 1;
+    } else if (child_pid == 0) {
+        char *arguments[] = {incrementValue}; // exec arguments, replace NULL
+        execvp("./user", arguments);
+        return 0;
+    }
 }
 
 
+key_t startSharedMemory(){
+    int *sharedInt;
+    key_t key = 123;                        //unique key
+    //allocate shared memory
+    int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
+    if (shmid < 0) {
+        perror("./user: shmid error: ");
+        exit(1);
+    }
+    //attach sharedInt pointer to shared memory
+    sharedInt = (int *) shmat(shmid, NULL, 0);
 
+    if (*sharedInt == -1) {
+        perror("./oss: shmat error: ");
+        exit(1);
+    }
+
+    //intialize seconds and nanoseconds in shared memory
+    *(sharedInt+0) = 0;   //seconds
+    *(sharedInt+1) = 0;   //nanoseconds
+
+    printf("seconds written in memory: %d\n", sharedInt[0]);
+    printf("nanoseconds written in memory: %d\n", sharedInt[0]);
+
+    shmdt((void *) sharedInt); //detach shared memory
+    return key;
+}
+
+
+void incrementSharedMemory(key_t key, int value) {
+    int *sharedInt;
+    unsigned int nextNano;
+    unsigned int nextSeconds;
+    //allocate shared memory
+    int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
+    if (shmid < 0) {
+        perror("./user: shmid error: ");
+        exit(1);
+    }
+    //attach sharedInt pointer to shared memory
+    sharedInt = (int *) shmat(shmid, NULL, 0);
+
+    if (*sharedInt == -1) {
+        perror("./oss: shmat error: ");
+        exit(1);
+    }
+
+    *(sharedInt+1) = 1e9-10000;
+    //intialize seconds and nanoseconds in shared memory
+    nextSeconds = *(sharedInt+0);   //seconds
+    nextNano = *(sharedInt+1)+ value;   //nanoseconds
+
+    if (nextNano > 1e9){
+        nextSeconds++;
+        nextNano =  (nextNano - 1e9);
+    }
+
+    *(sharedInt+0) = nextSeconds;
+    *(sharedInt+1) = nextNano;
+
+    printf("seconds written in memory: %d\n", nextSeconds);
+    printf("nanoseconds written in memory: %ld\n", nextNano);
+
+    shmdt((void *) sharedInt); //detach shared memory
+}
