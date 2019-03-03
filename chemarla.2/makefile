@@ -1,5 +1,4 @@
 CC = gcc
-
 all: oss user
 
 oss: oss.o

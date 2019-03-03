@@ -17,9 +17,6 @@ Concurrent UNIX processes and shared memory
 #include <sys/shm.h>
 
 
-int childFunction(FILE *in_file, char *outputFileName);
-
-int inputProcessFile(FILE *in_file, char *outputFileName);
 
 
 int main(int argc, char **argv) {
@@ -101,25 +98,25 @@ int main(int argc, char **argv) {
         perror("./oss: fileError: ");
         return 1;
     } else {                                                    //****************
-       key_t key = 999;
+       key_t key = ftok(".", 'x');
         //allocate shared memory
         int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
         if (shmid < 0) {
             perror("./user: shmid error: ");
-            exit(1);
+            return 1;
         }
         //attach shared memory
         sharedInt1 = (int *) shmat(shmid, NULL, 0);
 
-        if ((int) sharedInt1 == -1) {
+        if (*sharedInt1 == -1) {
             perror("./oss: shmat error: ");
-            exit(1);
+            return 1;
         }
 
-        sharedInt1 = 9999;
-        printf("Data written in memory: %d\n", sharedInt1);
+        sharedInt1[0] = 9999;
+        printf("Data written in memory: %d\n", sharedInt1[0]);
 
-        shmdt(sharedInt1);
+        shmdt((void *)sharedInt1);
 
         child_pid = fork();
 
@@ -135,6 +132,7 @@ int main(int argc, char **argv) {
 
         printf("Parent is making the Kool Aid dranks!!\n");
         wait(NULL);
+        printf("Parent Finished\n");
         return 0;
 //        for (i = 0; i < maxForks; i++) {
 //            printf("Number of Children Fork: %d \n", i + 1);
