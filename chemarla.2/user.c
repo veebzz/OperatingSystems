@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
     long elapsed;
 
     duration = atoi(argv[1]);
-
+    printf("child started: %d\n", getpid());
     if( clock_gettime( CLOCK_REALTIME, &start) == -1 ) {
         perror( "clock gettime" );
         exit( -1 );
