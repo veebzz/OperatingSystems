@@ -7,6 +7,7 @@
 #include <time.h>
 #include <stdlib.h>
 
+
 #define BILLION  1e9
 
 void checkSharedMemory();
@@ -18,7 +19,6 @@ int main(int argc, char **argv) {
 
     duration = atoi(argv[1]);
 
-    printf("USER Duration : %d\n", duration);
     if( clock_gettime( CLOCK_REALTIME, &start) == -1 ) {
         perror( "clock gettime" );
         exit( -1 );

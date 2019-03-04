@@ -20,8 +20,8 @@ Concurrent UNIX processes and shared memory
 
 key_t startSharedMemory();
 void incrementSharedMemory(key_t key, int value);
-char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks);
-void checkForTerminatedChildren(pid_t* array, FILE* outfileHandler);
+char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks, int activatedChildren);
+int checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated);
 pid_t forkChild(char* duration, FILE* outfileHandler);
 bool shouldExit(pid_t* array, int activated, int maxForks);
 
@@ -125,9 +125,7 @@ int main(int argc, char **argv) {
 
     while (true){
         incrementSharedMemory(key, incrementValue);
-        if ((duration = shouldCreateChild(activeChildren, maxActiveChildren, maxForks)) != NULL) {
-            activeChildren++;
-
+        if ((duration = shouldCreateChild(activeChildren, maxActiveChildren, maxForks, activatedChildren)) != NULL) {
             child_pid = forkChild(duration, out_file);
 
             //keep the pid array
@@ -136,7 +134,7 @@ int main(int argc, char **argv) {
 
         }
 
-        checkForTerminatedChildren(childPidArray, out_file);
+        activeChildren = checkForTerminatedChildren(childPidArray, out_file, activatedChildren);
 
         if (shouldExit(childPidArray, activatedChildren, maxForks)){
             break;
@@ -153,20 +151,41 @@ int main(int argc, char **argv) {
 
 }
 
-char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks) {
+char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks, int activatedChildren) {
 
     char* duration = "10000";
+    if(activatedChildren >= maxForks){
+        return NULL;
+    }
+
+    if(activeChildren >= maxActiveChildren){
+        return NULL;
+    }
+
 
     return duration;
 
 }
-void checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated, int maxForks){
+int checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated) {
     int i = 0;
-    for (i = 0; i < activated; i++){
-        if (*(array+i) > 0){
-            //check to see if the process is dead.
+    int status;
+    pid_t checkId;
+    int active = 0;
+
+    for (i = 0; i < activated; i++) {
+        if (*(array + i) > 0) {
+            //if checkID = 0 its still running, if -1 error, is = to its pid, it is dead
+            checkId = waitpid(*(array + i), &status, WNOHANG);
+            //if it is dead, mark to not check this anymore
+            if (checkId == *(array + i)) {
+                *(array + i) = -1;
+            } else {
+                active++;
+            }
         }
-    }}
+    }
+    return active;
+}
 
 bool shouldExit(pid_t* array, int activated, int maxForks){
     int i = 0;
@@ -231,7 +250,6 @@ void incrementSharedMemory(key_t key, int value) {
     unsigned int nextNano;
     unsigned int nextSeconds;
     //allocate shared memory
-    printf("Increment Shared memory\n");
     int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
     if (shmid < 0) {
         perror("./user: shmid error: ");
