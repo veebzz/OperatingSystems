@@ -18,4 +18,4 @@ user.o: user.c
 
 
 clean:
-	/bin/rm -f *.o $(TARGET1) $(TARGET2)
+	/bin/rm -f *.o output.txt $(TARGET1) $(TARGET2)
