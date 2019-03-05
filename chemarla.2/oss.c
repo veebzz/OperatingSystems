@@ -22,17 +22,21 @@ Concurrent UNIX processes and shared memory
 typedef struct memTime{
     int seconds;
     int nseconds;
-    char* duration;
+    char* duration[20];
     bool valid;
 }memTime;
 
+FILE* out_file;
+
+
 key_t startSharedMemory();
-struct memTime incrementSharedMemory(key_t key, int value);
-char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks,  int activatedChildren, struct memTime fileTime, struct memTime currentTime);
-int checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated, struct memTime currentTime);
-pid_t forkChild(char* duration);
-bool shouldExit(pid_t* array, int activated, int maxForks, struct memTime fileTime);
-struct memTime readNextLine(FILE* input_file);
+memTime incrementSharedMemory(key_t key, int value);
+char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks,  int activatedChildren, memTime fileTime, memTime currentTime);
+int checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated, memTime currentTime);
+pid_t forkChild(char* duration, char* outputFileName);
+bool shouldExit(pid_t* array, int activated, int maxForks, memTime fileTime);
+memTime readNextLine(FILE* input_file);
+static void interruptHandler();
 
 
 int main(int argc, char **argv) {
@@ -61,6 +65,10 @@ int main(int argc, char **argv) {
                 printf("\t\t If no argument is provided, (input.dat)will be used as\n\t\t a default argument.\n");
                 printf("-o <argument> :  This option will output data from the program to the given file name\n");
                 printf("\t\t argument. If no argument is provided, (output.txt) will be used as a\n\t\t default argument.\n");
+                printf("-n <argument> : This option takes an positive integer argument, which specifies the maximum number of fork processes\n");
+                printf("\t\t allowed in the program.");
+                printf("-s <argument> : This option takes an positive integer argument, which specifies the maximum number of active fork processes\n");
+                printf("\t\t allowed in the program. Maximum active allowed is 20, if argument is above 20, it will default to 20.\n");
                 break;
             case 'i':
                 if (optarg == NULL) {
@@ -96,6 +104,14 @@ int main(int argc, char **argv) {
 
             case 's':
                 maxActiveChildren = atoi(optarg);
+                if(maxActiveChildren > 20){
+                    printf("Maximum number of active child processes running on machine is 20. Exceeding argument will be set to 20.");
+                    maxActiveChildren = 20;
+                }else if(maxActiveChildren < 0){
+                    printf("Invalid argument passed to -s option.\n");
+                    printf("Use '-h' argument for valid usage instructions.\n\n Example: ./oss -h\n\n");
+                    exit(-1);
+                }
                 printf("Max number of active children allowed is %d\n", maxActiveChildren);
                 break;
 
@@ -116,9 +132,9 @@ int main(int argc, char **argv) {
         return 1;
     }
     //***************
-    FILE *out_file = fopen(outputFileName, "a+");
+    out_file = fopen(outputFileName, "a+");
     if (out_file == NULL) {
-        perror("syscall: File Error: ");
+        perror("./oss: File Error: ");
         return 1;
     }
     //get key from starting shared memory segment
@@ -130,7 +146,7 @@ int main(int argc, char **argv) {
     incrementValue = atoi(fileBuffer);
 
     //read second line to start incrementing and store line contents in fileTime struct
-    struct memTime fileTime;
+    memTime fileTime;
     fileTime = readNextLine(in_file);
     //if empty file detected exit
     if(!fileTime.valid){
@@ -139,7 +155,13 @@ int main(int argc, char **argv) {
 
     int *childPidArray = malloc(maxForks * sizeof(int));
     int activatedChildren = 0;
-    struct memTime currentTime;
+    memTime currentTime;
+    currentTime.nseconds = 0;
+    currentTime.seconds = 0;
+    //Signal
+    signal(SIGALRM, interruptHandler);//2 second interrupt
+    signal(SIGINT, interruptHandler);//ctrl-c interrupt
+    alarm(2);
 
     //oss parent control
     while (true){
@@ -148,8 +170,9 @@ int main(int argc, char **argv) {
         //check if a child should be spawned
         if ((duration = shouldCreateChild(activeChildren, maxActiveChildren, maxForks, activatedChildren, fileTime, currentTime)) != NULL) {
             //spawn child
-            child_pid = forkChild(duration);
-            fprintf(out_file, "Child[%d] spawned at %d:%d with duration %d\n", child_pid, currentTime.seconds, currentTime.nseconds, atoi(duration));
+            child_pid = forkChild(duration, outputFileName);
+            printf("Child[%d] started with duration %d at time %d s:%d ns\n", child_pid, atoi(duration), currentTime.seconds, currentTime.nseconds);
+            fprintf(out_file, "Child[%d] started with duration %d at time %d s:%d ns\n", child_pid, atoi(duration), currentTime.seconds, currentTime.nseconds);
             //add spawned child pid to childPidArray
             *(childPidArray + activatedChildren) = child_pid;
             //increment activatedChildren to keep track of how many children spawned
@@ -161,6 +184,7 @@ int main(int argc, char **argv) {
         activeChildren = checkForTerminatedChildren(childPidArray, out_file, activatedChildren, currentTime);
 
         if (shouldExit(childPidArray, activatedChildren, maxForks, fileTime)){
+            printf("Exit condition met\n");
             break;
         }
     }
@@ -170,14 +194,14 @@ int main(int argc, char **argv) {
     fclose(in_file);
     fclose(out_file);
     free(childPidArray);
-    printf("Parent Finished\n");
+    printf("Parent[%d] Finished\n", getpid());
     return 0;
 
 }
 
-struct memTime readNextLine(FILE* input_file){
+memTime readNextLine(FILE* input_file){
     char fileBuffer[256];
-    struct memTime fileTime;
+    memTime fileTime;
     fileTime.valid = false;
     const char space[2] = " ";
     char* token;
@@ -188,13 +212,13 @@ struct memTime readNextLine(FILE* input_file){
         token = strtok(NULL, space);
         fileTime.nseconds = atoi(token);
         token = strtok(NULL, space);
-        fileTime.duration = token;
+        strcpy(fileTime.duration,token);
         fileTime.valid = true;
     }
     return fileTime;
 }
 
-char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks, int activatedChildren, struct memTime fileTime, struct memTime currentTime) {
+char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks, int activatedChildren, memTime fileTime, memTime currentTime) {
     long int currentNanoTotal, fileNanoTotal;
     //check if maxForks reached
     if(activatedChildren >= maxForks){
@@ -218,10 +242,9 @@ char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks,
     else{
         return NULL;
     }
-
 }
 
-int checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated, struct memTime currentTime) {
+int checkForTerminatedChildren(pid_t* array, FILE* out_file, int activated, memTime currentTime) {
     int i = 0;
     int status;
     pid_t checkId;
@@ -234,7 +257,7 @@ int checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated
             checkId = waitpid(*(array + i), &status, WNOHANG);
             //if it is dead, mark them as -1 to not check this anymore
             if (checkId == *(array + i)) {
-                fprintf(outfileHandler, "Child[%d] terminated at %d:%d\n", *(array + i), currentTime.seconds, currentTime.nseconds);
+                fprintf(out_file, "Child[%d] terminated at %d:%d\n", *(array + i), currentTime.seconds, currentTime.nseconds);
                 *(array + i) = -1;
             } else {
                 active++;
@@ -245,7 +268,7 @@ int checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated
     return active;
 }
 
-bool shouldExit(pid_t* array, int activated, int maxForks, struct memTime fileTime){
+bool shouldExit(pid_t* array, int activated, int maxForks, memTime fileTime){
     int i = 0;
     for (i = 0; i < activated; i++){
         //if the child pid array has an active child
@@ -265,14 +288,13 @@ bool shouldExit(pid_t* array, int activated, int maxForks, struct memTime fileTi
     return true;
 }
 
-pid_t forkChild(char* duration){
+pid_t forkChild(char* duration, char* outputFileName){
     pid_t child_pid = fork();
 
     if (child_pid < 0) {                              //fork fail check
         perror("./oss : forkError");
         exit(-1);
     } else if (child_pid == 0) {
-        printf("in fork\n");
         //i am child
         //exec arguments
         char *arguments[3] = {"./user", duration, NULL};
@@ -309,11 +331,11 @@ key_t startSharedMemory(){
 }
 
 
-struct memTime incrementSharedMemory(key_t key, int value) {
+memTime incrementSharedMemory(key_t key, int value) {
     int *sharedInt;
     unsigned int nextNano;
     unsigned int nextSeconds;
-    struct memTime currentTime;
+    memTime currentTime;
     //allocate shared memory
     int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
 
@@ -332,9 +354,9 @@ struct memTime incrementSharedMemory(key_t key, int value) {
     nextSeconds = *(sharedInt+0);   //seconds
     nextNano = *(sharedInt+1)+ value;   //nanoseconds
     //check if nanoseconds reached over billion
-    if (nextNano > 1e9){
+    if (nextNano > BILLION){
         nextSeconds++;          // increment seconds
-        nextNano =  (nextNano - 1e9);   //update nanoseconds
+        nextNano =  (nextNano - BILLION);   //update nanoseconds
     }
     // update shareInt pointer in shared memory with changes
     *(sharedInt+0) = nextSeconds;
@@ -346,3 +368,16 @@ struct memTime incrementSharedMemory(key_t key, int value) {
 
     return currentTime;
 }
+static void interruptHandler(){
+    key_t key = 123;
+    int* sharedInt;
+    int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
+    sharedInt = (int *) shmat(shmid, NULL, 0);
+    fprintf(out_file, "Program Interrupt at %d s: %d ns\n", *(sharedInt+0), *(sharedInt+1));
+    fclose(out_file);
+    shmctl(shmid, IPC_RMID, NULL); //delete shared memory
+    kill(0, SIGKILL); // kill child process
+    exit(0);
+}
+
+//FILE* interruptFileHelper(char* outputFileName )

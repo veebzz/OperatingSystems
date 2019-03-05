@@ -1,8 +1,0 @@
-Child[12306] spawned at 0:80000 with duration 0
-Child[12307] spawned at 0:580000 with duration 0
-Child[12306] terminated at 0:1260000
-Child[12307] terminated at 0:1600000
-Child[12308] spawned at 0:2760000 with duration 0
-Child[12308] terminated at 0:4180000
-Child[12310] spawned at 1:40000 with duration 0
-Child[12310] terminated at 1:1460000
