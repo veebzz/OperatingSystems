@@ -1,0 +1,34 @@
+CS 4760 Assignment #2
+
+
+--Usage--
+
+Within the project directory use make to compile the source files.
+
+make
+
+The program will create an executable files called "oss" and "user" . To execute the executable, refer to the example below.
+
+
+./oss  -h   #Will display all possible options and their descriptions
+
+
+If the arguments are missing or partially missing. The program will automatically use the default input file name "input.txt" and output file name "output.txt".
+The command above will provide more defaults on the other executable options.
+
+--Clean--
+
+The makefile also includes a clean function which removes the executable, and object files.
+
+
+make clean
+
+
+--Version Log--
+
+Github was used as version control for this assignment. The link to this assignments version control is (https://github.com/veebzz/OperatingSystems/commits/master).
+
+--Existing Problems--
+
+-Program works fine, although the times seems confusing because the parent is printing termination output when it checks the pid array in checkForTerminatedChildren.
+-Not sure if global output file pointer will cause problem in the future.

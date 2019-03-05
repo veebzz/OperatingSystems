@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
-#include "filePointerGlobal.h"
 
 #define BILLION  1e9
 
@@ -25,14 +24,6 @@ int main(int argc, char **argv) {
     struct checkTime currentTime;
 
     duration = atoi(argv[1]); // get the passed duration
-//    outputFileName = argv[2];
-//
-//    FILE* out_file = fopen(outputFileName, "a+");
-//    if (out_file == NULL) {
-//        perror("./oss: File Error: ");
-//        return 1;
-//    }
-
     currentTime = checkSharedMemory();
 
     //add current simulated clock to duration
@@ -45,8 +36,6 @@ int main(int argc, char **argv) {
         elapsed = (currentTime.seconds * BILLION) + currentTime.nseconds;
         if (elapsed > duration) {
             printf("USER:[%d] terminated at time %d s:%d ns\n", getpid(), currentTime.seconds, currentTime.nseconds);
-//            fprintf("USER: child[%d] terminated at time %d s:%d ns\n", getpid(), currentTime.seconds, currentTime.nseconds);
-//            fclose(out_file);
             break;
         }
     }

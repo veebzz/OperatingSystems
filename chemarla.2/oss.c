@@ -304,7 +304,6 @@ pid_t forkChild(char* duration, char* outputFileName){
     return child_pid;
 }
 
-
 key_t startSharedMemory(){
     int *sharedInt;
     key_t key = 123;
@@ -329,7 +328,6 @@ key_t startSharedMemory(){
     shmdt((void *) sharedInt); //detach shared memory
     return key;
 }
-
 
 memTime incrementSharedMemory(key_t key, int value) {
     int *sharedInt;
@@ -368,6 +366,7 @@ memTime incrementSharedMemory(key_t key, int value) {
 
     return currentTime;
 }
+
 static void interruptHandler(){
     key_t key = 123;
     int* sharedInt;
@@ -380,4 +379,3 @@ static void interruptHandler(){
     exit(0);
 }
 
-//FILE* interruptFileHelper(char* outputFileName )
