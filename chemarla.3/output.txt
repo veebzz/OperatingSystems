@@ -1,8 +1,0 @@
-Child[26298] started with duration 375891 at time 0 s:80000 ns
-Child[26299] started with duration 5000000 at time 0 s:580000 ns
-Child[26298] terminated at 0:1820000
-Child[26300] started with duration 375620 at time 0 s:2760000 ns
-Child[26300] terminated at 0:4180000
-Child[26299] terminated at 0:6640000
-Child[26301] started with duration 35000 at time 1 s:40000 ns
-Child[26301] terminated at 1:1340000
