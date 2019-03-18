@@ -16,14 +16,17 @@ Semaphores and Operating System Simulator
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <stdbool.h>
+#include <semaphore.h>
+#include <fcntl.h>
+#include <errno.h>
 
-FILE* out_file;
 
-void postToSharedMemory(FILE* in_file, int maxForks);
-bool shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks,  int activatedChildren);
-int checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated);
+
+void postToSharedMemory(FILE *in_file, int maxForks);
+bool shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks, int activatedChildren);
+int checkForTerminatedChildren(pid_t *array, int activated);
 pid_t forkChild(int index);
-bool shouldExit(pid_t* array, int activated, int maxForks);
+bool shouldExit(pid_t *array, int activated, int maxForks);
 //static void interruptHandler();
 
 
@@ -32,6 +35,7 @@ int main(int argc, char **argv) {
     char *inputFileName = "input.txt";
     opterr = 0;
     int status = 0, i;
+    sem_t *sem;
 
     pid_t child_pid, wait_pid;
 
@@ -62,22 +66,28 @@ int main(int argc, char **argv) {
             default:
                 printf("%s: Argument Error: Incorrect argument usage.\n", argv[0]);
                 printf("Use '-h' argument for valid usage instructions.\n\n Example: ./master -h\n\n");
-                exit(0);
+                exit(-1);
         }
     }
 
     //open input file
-    printf("Input File: %s\n", inputFileName);
+    printf("\nInput File: %s\n", inputFileName);
     printf("Opening input file...\n");
 
     FILE *in_file = fopen(inputFileName, "r");
     if (in_file == NULL) {
         perror("./master: fileError: ");
-        return 1;
+        exit(-1);
     }
 
     //start/post file data to shared memory segment
-   postToSharedMemory(inputFileName,maxForks);
+    postToSharedMemory(inputFileName, maxForks);
+    //create named semaphore
+    sem = sem_open("semName", O_CREAT, 0644, 0);
+    if(sem == SEM_FAILED){
+        perror("./master: sem_open error: ");
+        exit(-1);
+    }
 
 
     int *childPidArray = malloc(maxForks * sizeof(int));
@@ -89,30 +99,33 @@ int main(int argc, char **argv) {
 //    alarm(2);
 
     //master parent control
-    while (true){
+    while (true) {
         //check if a child should be spawned
-        if (shouldCreateChild(activeChildren, maxActiveChildren, maxForks, activatedChildren) != NULL) {
+        if (shouldCreateChild(activeChildren, maxActiveChildren, maxForks, activatedChildren)) {
             //spawn child
-            child_pid = forkChild(index);
+            child_pid = forkChild(activatedChildren);
             printf("Child[%d] started\n", child_pid);
             //add spawned child pid to childPidArray
             *(childPidArray + activatedChildren) = child_pid;
             //increment activatedChildren to keep track of how many children spawned
             activatedChildren++;
         }
-        // check for terminated/get update for active children
-        activeChildren = checkForTerminatedChildren(childPidArray, out_file, activatedChildren);
-
-        if (shouldExit(childPidArray, activatedChildren, maxForks)){
+        // check for terminated and get update for active children
+        activeChildren = checkForTerminatedChildren(childPidArray, activatedChildren);
+        //check termination conditions
+        if (shouldExit(childPidArray, activatedChildren, maxForks)) {
+            if(sem_unlink(sem) == -1){
+                perror("./master: sem_unlink error: ");
+                exit(-1);
+            }
             printf("Exit condition met\n");
             break;
         }
     }
 
     // release shared memory and file
-    shmctl(123,IPC_RMID,NULL);
+    shmctl(123, IPC_RMID, NULL);
     fclose(in_file);
-    fclose(out_file);
     free(childPidArray);
     printf("Parent[%d] Finished\n", getpid());
     return 0;
@@ -122,17 +135,17 @@ int main(int argc, char **argv) {
 
 bool shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks, int activatedChildren) {
     //check if maxForks reached
-    if(activatedChildren >= maxForks){
+    if (activatedChildren >= maxForks) {
         return false;
     }
     //check if current active children limit reached
-    if(activeChildren >= maxActiveChildren){
+    if (activeChildren >= maxActiveChildren) {
         return false;
     }
-  return true;
+    return true;
 }
 
-int checkForTerminatedChildren(pid_t* array, FILE* out_file, int activated) {
+int checkForTerminatedChildren(pid_t *array, int activated) {
     int i = 0;
     int status;
     pid_t checkId;
@@ -145,7 +158,7 @@ int checkForTerminatedChildren(pid_t* array, FILE* out_file, int activated) {
             checkId = waitpid(*(array + i), &status, WNOHANG);
             //if it is dead, mark them as -1 to not check this anymore
             if (checkId == *(array + i)) {
-                printf("Child[%d] terminated", *(array+i));
+                printf("Child[%d] terminated", *(array + i));
                 *(array + i) = -1;
             } else {
                 active++;
@@ -156,23 +169,23 @@ int checkForTerminatedChildren(pid_t* array, FILE* out_file, int activated) {
     return active;
 }
 
-bool shouldExit(pid_t* array, int activated, int maxForks){
+bool shouldExit(pid_t *array, int activated, int maxForks) {
     int i = 0;
-    for (i = 0; i < activated; i++){
+    for (i = 0; i < activated; i++) {
         //if the child pid array has an active child
-        if (*(array+i) > 0){
+        if (*(array + i) > 0) {
             return false;
         }
     }
     //if maxforks have not reach end yet
-    if (activated < maxForks){
+    if (activated < maxForks) {
         return false;
     }
     printf("asking to exit\n");
     return true;
 }
 
-pid_t forkChild(int index){
+pid_t forkChild(int index) {
     pid_t child_pid = fork();
 
     if (child_pid < 0) {
@@ -188,26 +201,25 @@ pid_t forkChild(int index){
     return child_pid;
 }
 
-void postToSharedMemory(FILE* in_file, int maxForks){
-    char *palinArray, fileBuffer[100];
+void postToSharedMemory(FILE *in_file, int maxForks) {
+    char* palinArray[maxForks], fileBuffer[100];
     int i;
-    palinArray = malloc(maxForks * sizeof(char*));
 
     key_t key = 123;
     //allocate shared memory
-    int shmid = shmget(key, maxForks * sizeof(char*), IPC_CREAT | 0666);
+    int shmid = shmget(key, 1024, IPC_CREAT | 0666);
     if (shmid < 0) {
         perror("./master: shmid error: ");
-        exit(1);
+        exit(-1);
     }
     //attach sharedInt pointer to shared memory
-    palinArray = (char *) shmat(shmid, NULL, 0);
+    *palinArray = (char *) shmat(shmid, NULL, 0);
 
     if (*palinArray == -1) {
         perror("./master: shmat error: ");
-        exit(1);
+        exit(-1);
     }
-    for(i = 0; i < maxForks; i++){
+    for (i = 0; i < maxForks; i++) {
         fgets(fileBuffer, sizeof(fileBuffer), in_file);
         *(palinArray + i) = fileBuffer;
     }

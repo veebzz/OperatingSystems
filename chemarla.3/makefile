@@ -1,5 +1,5 @@
 C = gcc
-CFLAGS = -Wall -g -w
+CFLAGS = -Wall -g -w -lpthread -lrt
 TARGET1 = master
 OBJ1 = master.c
 TARGET2 = palin
