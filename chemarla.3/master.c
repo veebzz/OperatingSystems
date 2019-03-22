@@ -30,9 +30,11 @@ pid_t forkChild(int index, int maxForks);
 bool shouldExit(pid_t *array, int activated, int maxForks);
 
 //static void interruptHandler();
-key_t key = 102938;
+
 
 int main(int argc, char **argv) {
+    key_t key = 102938;
+    const char * semName = "/sem_Chem";
     int optionIndex, maxForks = 10, maxActiveChildren = 20, activeChildren = 0;
     char *inputFileName = "input.txt";
     opterr = 0;

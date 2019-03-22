@@ -10,6 +10,7 @@ Semaphores and Operating System Simulator
 #include <stdlib.h>
 #include <string.h>
 #include <semaphore.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <time.h>
 
@@ -19,9 +20,9 @@ char* isPalindrome(char str1[100]);
 char* strrev(char *str);
 
 key_t key = 102938;
+const char * semName = "/sem_Chem";
 
 int main(int argc, char **argv) {
-
     int palinIndex, i;
     char* palinString = malloc(sizeof(char) * 100);
     char* revPalinString = malloc(sizeof(char) * 100);
@@ -40,7 +41,7 @@ int main(int argc, char **argv) {
 
 
     palinIndex = atoi(argv[1]); // get the passed index
-
+    printf("Point 1\n");
     //get string in shared memory stored at the passed index
     int shmid = shmget(key, 100 * 100, IPC_CREAT | 0666);
     if (shmid < 0) {
@@ -53,11 +54,11 @@ int main(int argc, char **argv) {
         perror("./palin: shmat error: ");
         exit(1);
     }
-
-    palinString = (*palinArray)[palinIndex - 1];
+    printf("Point 2\n");
+    palinString = (*palinArray)[palinIndex];
 //    palinString = "racecar";
    //use C++ style string reverse
-    strcpy(revPalinString,palinString);
+    strcpy(revPalinString, palinString);
     strrev(revPalinString);
     //compare strings to see if it is a palindrome
     if(strcmp(palinString, revPalinString) == 0){
@@ -72,13 +73,13 @@ int main(int argc, char **argv) {
     printf("ERror 1\n");
 
     //semaphore
-    sem = sem_open("semName", 1);
+    sem = sem_open(semName, O_CREAT, 0644, 1);
     if(sem == SEM_FAILED) {
         fprintf(stderr, "./palin: sem_open error: ");
         perror("./palin: sem_open error: ");
         exit(-1);
     }
-    printf("ERror 2\n");
+    printf("Error 2\n");
 
     for(i = 0; i < 5; i++){
         //sleep between 0 - 3 seconds
