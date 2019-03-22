@@ -14,7 +14,7 @@ Semaphores and Operating System Simulator
 #include <time.h>
 
 
-char* getSharedMemory(int palinIndex, int maxForks);
+char* getSharedMemory(int palinIndex);
 char* isPalindrome(char str1[100]);
 char* strrev(char *str);
 
@@ -22,10 +22,10 @@ key_t key = 102938;
 
 int main(int argc, char **argv) {
 
-    int palinIndex, i, maxForks;
+    int palinIndex, i;
     char* palinString = malloc(sizeof(char) * 100);
     char* revPalinString = malloc(sizeof(char) * 100);
-    char* outputFileName, semName = "semName";
+    char* outputFileName;
     FILE* out_file;
     sem_t* sem;
     time_t now;
@@ -40,8 +40,6 @@ int main(int argc, char **argv) {
 
 
     palinIndex = atoi(argv[1]); // get the passed index
-    maxForks = atoi(argv[2]);
-
 
     //get string in shared memory stored at the passed index
     int shmid = shmget(key, 100 * 100, IPC_CREAT | 0666);
@@ -57,7 +55,7 @@ int main(int argc, char **argv) {
     }
 
     palinString = (*palinArray)[palinIndex - 1];
-    palinString = "racecar";
+//    palinString = "racecar";
    //use C++ style string reverse
     strcpy(revPalinString,palinString);
     strrev(revPalinString);
@@ -74,8 +72,9 @@ int main(int argc, char **argv) {
     printf("ERror 1\n");
 
     //semaphore
-    sem = sem_open(semName, 0);
+    sem = sem_open("semName", 1);
     if(sem == SEM_FAILED) {
+        fprintf(stderr, "./palin: sem_open error: ");
         perror("./palin: sem_open error: ");
         exit(-1);
     }
@@ -106,18 +105,18 @@ int main(int argc, char **argv) {
     exit(0);
 }
 
-char* getSharedMemory(int palinIndex, int maxForks){
-    char (*palinArray)[100][100];
-    char* palinString;
-
-    //get string from index
-    strcpy(palinString, (*palinArray)[palinIndex]);
-    //detach shared memory
-    shmdt((void *) palinArray);
-
-    return palinString;
-
-}
+//char* getSharedMemory(int palinIndex,){
+//    char (*palinArray)[100][100];
+//    char* palinString;
+//
+//    //get string from index
+//    strcpy(palinString, (*palinArray)[palinIndex]);
+//    //detach shared memory
+//    shmdt((void *) palinArray);
+//
+//    return palinString;
+//
+//}
 
 //char* isPalindrome(char* str1){
 //    char* outFileName;

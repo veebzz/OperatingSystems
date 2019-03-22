@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
         if (shouldCreateChild(activeChildren, maxActiveChildren, maxForks, activatedChildren)) {
             //spawn child
             child_pid = forkChild(activatedChildren, maxForks);
-//            printf("Child[%d] started\n", child_pid);
+            printf("Child[%d] started\n", child_pid);
             //add spawned child pid to childPidArray
             *(childPidArray + activatedChildren) = child_pid;
             //increment activatedChildren to keep track of how many children spawned
@@ -164,7 +164,7 @@ int checkForTerminatedChildren(pid_t *array, int activated) {
             checkId = waitpid(*(array + i), &status, WNOHANG);
             //if it is dead, mark them as -1 to not check this anymore
             if (checkId == *(array + i)) {
-//                printf("Child[%d] terminated\n", *(array + i));
+                //printf("Child[%d] terminated\n", *(array + i));
                 *(array + i) = -1;
             } else {
                 active++;
@@ -200,7 +200,7 @@ pid_t forkChild(int index, int maxForks) {
     } else if (child_pid == 0) {
         //i am child
         //exec arguments
-        char *arguments[4] = {"./palin", index, maxForks, NULL};
+        char *arguments[3] = {"./palin", index, NULL};
         execvp("./palin", arguments);
         exit(0);
     }
