@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
         exit(-1);
     }
     //allocate shared memory
-    int shmid = shmget(key, maxForks * sizeof(char *), IPC_CREAT | 0666);
+    int shmid = shmget(key, 100 * 100, IPC_CREAT | 0666);
     if (shmid < 0) {
         perror("./master: shmget error: ");
         exit(-1);
@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     //start/post file data to shared memory segment
     postToSharedMemory(in_file, maxForks, shmid);
     //create named semaphore
-    sem = sem_open("semName", O_CREAT, 0644, 0);
+    sem = sem_open("semName", O_CREAT, 0644, 1);
     if (sem == SEM_FAILED) {
         perror("./master: sem_open error: ");
         exit(-1);
@@ -209,7 +209,7 @@ pid_t forkChild(int index, int maxForks) {
 
 void postToSharedMemory(FILE* in_file, int maxForks, int shmid) {
     char fileBuffer[100];
-    char (*palinArray)[100][maxForks];
+    char (*palinArray)[100][100];
     int i;
 
     //attach sharedInt pointer to shared memory

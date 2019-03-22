@@ -23,8 +23,9 @@ key_t key = 102938;
 int main(int argc, char **argv) {
 
     int palinIndex, i, maxForks;
-    char* palinString;
-    char* outputFileName;
+    char* palinString = malloc(sizeof(char) * 100);
+    char* revPalinString = malloc(sizeof(char) * 100);
+    char* outputFileName, semName = "semName";
     FILE* out_file;
     sem_t* sem;
     time_t now;
@@ -37,8 +38,10 @@ int main(int argc, char **argv) {
 
     ts = localtime(&now);
 
+
     palinIndex = atoi(argv[1]); // get the passed index
     maxForks = atoi(argv[2]);
+
 
     //get string in shared memory stored at the passed index
     int shmid = shmget(key, 100 * 100, IPC_CREAT | 0666);
@@ -53,29 +56,32 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    palinString = getSharedMemory(palinIndex - 1 , maxForks);
-    //assess if string is a palindrome and get the output file name;
-    outputFileName = isPalindrome(palinString);
+    palinString = (*palinArray)[palinIndex - 1];
+    palinString = "racecar";
+   //use C++ style string reverse
+    strcpy(revPalinString,palinString);
+    strrev(revPalinString);
+    //compare strings to see if it is a palindrome
+    if(strcmp(palinString, revPalinString) == 0){
+        outputFileName = "palin.out";
+        fprintf(stderr, "%s\n", outputFileName);
+    }else {
+        outputFileName = "nopalin.out";
+        fprintf(stderr, "%s\n", outputFileName);
+    }
+    shmdt((void *) palinArray);
 
-//    out_file = fopen("output.txt", "a+");
-//    if (out_file == NULL){
-//        perror("./palin: fileError: ");
-//        exit(-1);
-//    }
-//    fprintf(out_file,"%d printing\n", getpid());
-//    fclose(out_file);
-
-
+    printf("ERror 1\n");
 
     //semaphore
-    sem = sem_open("semName", 0);
+    sem = sem_open(semName, 0);
     if(sem == SEM_FAILED) {
         perror("./palin: sem_open error: ");
         exit(-1);
     }
+    printf("ERror 2\n");
 
     for(i = 0; i < 5; i++){
-
         //sleep between 0 - 3 seconds
         sleep(rand);
         //entry section
@@ -113,22 +119,22 @@ char* getSharedMemory(int palinIndex, int maxForks){
 
 }
 
-char* isPalindrome(char* str1){
-    char* outFileName;
-    char* str2;
-
-    strcpy(str2, str1);
-    strrev(str2);
-
-    if(strcmp(str1, str2) == 0){
-        outFileName = "palin.out";
-        fprintf(stderr, "%s\n", outFileName);
-    }else {
-        outFileName = "nopalin.out";
-        fprintf(stderr, "%s\n", outFileName);
-    }
-    return outFileName;
-}
+//char* isPalindrome(char* str1){
+//    char* outFileName;
+//    char* str2;
+//
+//    strcpy(str2, str1);
+//    strrev(str2);
+//
+//    if(strcmp(str1, str2) == 0){
+//        outFileName = "palin.out";
+//        fprintf(stderr, "%s\n", outFileName);
+//    }else {
+//        outFileName = "nopalin.out";
+//        fprintf(stderr, "%s\n", outFileName);
+//    }
+//    return outFileName;
+//}
 
 char* strrev(char* str)
 {
