@@ -14,12 +14,15 @@ Semaphores and Operating System Simulator
 #include <time.h>
 
 
-char* getSharedMemory(int palinIndex);
-char* isPalindrome(char str[]);
+char* getSharedMemory(int palinIndex, int maxForks);
+char* isPalindrome(char str1[100]);
+char* strrev(char *str);
+
+key_t key = 102938;
 
 int main(int argc, char **argv) {
 
-    int palinIndex, i;
+    int palinIndex, i, maxForks;
     char* palinString;
     char* outputFileName;
     FILE* out_file;
@@ -29,32 +32,59 @@ int main(int argc, char **argv) {
     now = time(NULL);
     int random = rand() % 4;
     struct tm *ts;
+    char (*palinArray)[100][100];
     char buf[80];
 
     ts = localtime(&now);
 
     palinIndex = atoi(argv[1]); // get the passed index
+    maxForks = atoi(argv[2]);
+
     //get string in shared memory stored at the passed index
-    palinString = getSharedMemory(palinIndex);
+    int shmid = shmget(key, 100 * 100, IPC_CREAT | 0666);
+    if (shmid < 0) {
+        perror("./master: shmget error: ");
+        exit(-1);
+    }
+    //attach pointer to shared memory
+    palinArray = shmat(shmid, NULL, 0);
+    if (*palinArray == -1) {
+        perror("./palin: shmat error: ");
+        exit(1);
+    }
+
+    palinString = getSharedMemory(palinIndex - 1 , maxForks);
     //assess if string is a palindrome and get the output file name;
     outputFileName = isPalindrome(palinString);
 
+//    out_file = fopen("output.txt", "a+");
+//    if (out_file == NULL){
+//        perror("./palin: fileError: ");
+//        exit(-1);
+//    }
+//    fprintf(out_file,"%d printing\n", getpid());
+//    fclose(out_file);
+
+
+
+    //semaphore
+    sem = sem_open("semName", 0);
+    if(sem == SEM_FAILED) {
+        perror("./palin: sem_open error: ");
+        exit(-1);
+    }
 
     for(i = 0; i < 5; i++){
+
         //sleep between 0 - 3 seconds
         sleep(rand);
         //entry section
         strftime(buf, sizeof(buf),"%H:%M:%S", ts);
-        printf("Child[%d] starting to enter critical section at %s\n", getpid(), buf);
-        while(sem_wait(sem) == -1){
-            if(errno != EINTR){
-                perror("./palin: sem_wait error: ");
-                exit(-1);
-            }
-        }
+        fprintf(stderr, "Child[%d] starting to enter critical section at %s\n", getpid(), buf);
+        sem_wait(sem);
         //critical section
         strftime(buf, sizeof(buf),"%H:%M:%S",ts);
-        printf("Child[%d] is inside CRITICAL SECTION at %s\n", getpid(), buf);
+        fprintf(stderr,"Child[%d] is inside CRITICAL SECTION at %s\n", getpid(), buf);
         out_file = fopen(outputFileName, "a+");
         if (out_file == NULL){
             perror("./palin: fileError: ");
@@ -62,54 +92,55 @@ int main(int argc, char **argv) {
         }
         sleep(2);
         fprintf(out_file, "%d\t%d\t%s\n", getpid(), palinIndex, palinString);
+        fclose(out_file);
         sleep(2);
         //execute code to exit from critical section
-        if(sem_post(sem) == -1){
-            perror("./palin: sem_post error: ");
-        }
+        sem_post(sem);
     }
     exit(0);
 }
 
-char* getSharedMemory(int palinIndex){
-    char *palinArray, palinString;
+char* getSharedMemory(int palinIndex, int maxForks){
+    char (*palinArray)[100][100];
+    char* palinString;
 
-    key_t key = 123;
-
-    //allocate shared memory
-    int shmid = shmget(key, 1024, IPC_CREAT | 0666);
-    if (shmid < 0) {
-        perror("./palin: shmid error: ");
-        exit(1);
-    }
-    //attach sharedInt pointer to shared memory
-    palinArray = (char *) shmat(shmid, NULL, 0);
-
-    if (*palinArray == -1) {
-        perror("./palin: shmat error: ");
-        exit(1);
-    }
     //get string from index
-    palinString = *(palinArray + palinIndex);
-
-    shmdt((void *) palinArray); //detach shared memory
+    strcpy(palinString, (*palinArray)[palinIndex]);
+    //detach shared memory
+    shmdt((void *) palinArray);
 
     return palinString;
 
 }
 
-char* isPalindrome(char str[]){
+char* isPalindrome(char* str1){
     char* outFileName;
-    int left = 0;
-    int right = strlen(str) - 1;
+    char* str2;
 
-    while(right > left){
-        if(str[left++] != str[right--]){
-            outFileName = "nopalin.out";
-            return outFileName;
+    strcpy(str2, str1);
+    strrev(str2);
 
-        }
+    if(strcmp(str1, str2) == 0){
+        outFileName = "palin.out";
+        fprintf(stderr, "%s\n", outFileName);
+    }else {
+        outFileName = "nopalin.out";
+        fprintf(stderr, "%s\n", outFileName);
     }
-    outFileName = "palin.out";
     return outFileName;
+}
+
+char* strrev(char* str)
+{
+    char *p1, *p2;
+
+    if (! str || ! *str)
+        return str;
+    for (p1 = str, p2 = str + strlen(str) - 1; p2 > p1; ++p1, --p2)
+    {
+        *p1 ^= *p2;
+        *p2 ^= *p1;
+        *p1 ^= *p2;
+    }
+    return str;
 }

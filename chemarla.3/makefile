@@ -1,5 +1,5 @@
 C = gcc
-CFLAGS = -Wall -g -w -lpthread -lrt
+CFLAGS = -Wall -g -w -pthread
 TARGET1 = master
 OBJ1 = master.c
 TARGET2 = palin
@@ -18,4 +18,4 @@ palin.o: user.c
 
 
 clean:
-	/bin/rm -f *.o palin.out nopalin.out $(TARGET1) $(TARGET2)
+	/bin/rm -f *.o nopalin.out palin.out $(TARGET1) $(TARGET2)
