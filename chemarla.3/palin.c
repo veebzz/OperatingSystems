@@ -5,6 +5,7 @@ CS4760 OS Project 3
 Semaphores and Operating System Simulator
 */
 #include <sys/ipc.h>
+#include <sys/stat.h>
 #include <sys/shm.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +31,6 @@ int main(int argc, char **argv) {
     FILE* out_file;
     sem_t* sem;
     time_t now;
-    srand(now);
     now = time(NULL);
     int random = rand() % 4;
     struct tm *ts;
@@ -39,9 +39,8 @@ int main(int argc, char **argv) {
 
     ts = localtime(&now);
 
-
     palinIndex = atoi(argv[1]); // get the passed index
-    printf("Point 1\n");
+    srand(palinIndex);
     //get string in shared memory stored at the passed index
     int shmid = shmget(key, 100 * 100, IPC_CREAT | 0666);
     if (shmid < 0) {
@@ -54,9 +53,7 @@ int main(int argc, char **argv) {
         perror("./palin: shmat error: ");
         exit(1);
     }
-    printf("Point 2\n");
     palinString = (*palinArray)[palinIndex];
-//    palinString = "racecar";
    //use C++ style string reverse
     strcpy(revPalinString, palinString);
     strrev(revPalinString);
@@ -70,10 +67,8 @@ int main(int argc, char **argv) {
     }
     shmdt((void *) palinArray);
 
-    printf("ERror 1\n");
-
     //semaphore
-    sem = sem_open(semName, O_CREAT, 0644, 1);
+    sem = sem_open(semName, O_CREAT, 0666, 1);
     if(sem == SEM_FAILED) {
         fprintf(stderr, "./palin: sem_open error: ");
         perror("./palin: sem_open error: ");
@@ -83,12 +78,16 @@ int main(int argc, char **argv) {
 
     for(i = 0; i < 5; i++){
         //sleep between 0 - 3 seconds
-        sleep(rand);
+        sleep(1);
         //entry section
         strftime(buf, sizeof(buf),"%H:%M:%S", ts);
+        printf("[%d]Error 4\n", getpid());
         fprintf(stderr, "Child[%d] starting to enter critical section at %s\n", getpid(), buf);
+
         sem_wait(sem);
+
         //critical section
+        printf("Error 5\n");
         strftime(buf, sizeof(buf),"%H:%M:%S",ts);
         fprintf(stderr,"Child[%d] is inside CRITICAL SECTION at %s\n", getpid(), buf);
         out_file = fopen(outputFileName, "a+");

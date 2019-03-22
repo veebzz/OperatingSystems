@@ -10,8 +10,8 @@ Semaphores and Operating System Simulator
 #include <getopt.h>
 #include <string.h>
 #include <sys/wait.h>
-//#include <sys/types.h>
 #include <sys/ipc.h>
+#include <sys/stat.h>
 #include <sys/shm.h>
 #include <stdbool.h>
 #include <semaphore.h>
@@ -25,7 +25,7 @@ bool shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks, 
 
 int checkForTerminatedChildren(pid_t *array, int activated);
 
-pid_t forkChild(int index, int maxForks);
+pid_t forkChild(int index);
 
 bool shouldExit(pid_t *array, int activated, int maxForks);
 
@@ -43,13 +43,18 @@ int main(int argc, char **argv) {
 
     pid_t child_pid, wait_pid;
 
+    if (sem_unlink(semName) == -1) {
+        perror("./master: sem_unlink error: ");
+        exit(-1);
+    }
+
     //set default input file name
     inputFileName = "input.txt";
     while ((optionIndex = getopt(argc, argv, "hi:n:s:")) != -1) {
         switch (optionIndex) {
             case 'h':
                 printf("List of valid command line argument usage\n");
-                printf("-h	      :  Lists all possible command line arguments, their explanation,and usage.\n");
+                printf("-h	      :  Lists all possible command line arguments, theirw explanation,and usage.\n");
                 printf("-i <argument> :  This option will take a file name as an argument and open the given\n");
                 printf("\t\t file and parse its contents to continue the program.\n");
                 printf("\t\t If no argument is provided, (input.txt)will be used as\n\t\t a default argument.\n");
@@ -77,6 +82,7 @@ int main(int argc, char **argv) {
     //open input file
     printf("\nInput File: %s\n", inputFileName);
     printf("Opening input file...\n");
+    printf("Parent PID: %d\n", getpid());
 
     FILE *in_file = fopen(inputFileName, "r");
     if (in_file == NULL) {
@@ -92,7 +98,7 @@ int main(int argc, char **argv) {
     //start/post file data to shared memory segment
     postToSharedMemory(in_file, maxForks, shmid);
     //create named semaphore
-    sem = sem_open("semName", O_CREAT, 0644, 1);
+    sem = sem_open(semName, O_CREAT, 0666, 1);
     if (sem == SEM_FAILED) {
         perror("./master: sem_open error: ");
         exit(-1);
@@ -112,8 +118,8 @@ int main(int argc, char **argv) {
         //check if a child should be spawned
         if (shouldCreateChild(activeChildren, maxActiveChildren, maxForks, activatedChildren)) {
             //spawn child
-            child_pid = forkChild(activatedChildren, maxForks);
             printf("Child[%d] started\n", child_pid);
+            child_pid = forkChild(activatedChildren);
             //add spawned child pid to childPidArray
             *(childPidArray + activatedChildren) = child_pid;
             //increment activatedChildren to keep track of how many children spawned
@@ -123,7 +129,7 @@ int main(int argc, char **argv) {
         activeChildren = checkForTerminatedChildren(childPidArray, activatedChildren);
         //check termination conditions
         if (shouldExit(childPidArray, activatedChildren, maxForks)) {
-            if (sem_unlink("semName") == -1) {
+            if (sem_unlink(semName) == -1) {
                 perror("./master: sem_unlink error: ");
                 exit(-1);
             }
@@ -166,7 +172,7 @@ int checkForTerminatedChildren(pid_t *array, int activated) {
             checkId = waitpid(*(array + i), &status, WNOHANG);
             //if it is dead, mark them as -1 to not check this anymore
             if (checkId == *(array + i)) {
-                //printf("Child[%d] terminated\n", *(array + i));
+                printf("Child[%d] terminated\n", *(array + i));
                 *(array + i) = -1;
             } else {
                 active++;
@@ -193,8 +199,9 @@ bool shouldExit(pid_t *array, int activated, int maxForks) {
     return true;
 }
 
-pid_t forkChild(int index, int maxForks) {
+pid_t forkChild(int index) {
     pid_t child_pid = fork();
+    char arg[3];
 
     if (child_pid < 0) {
         perror("./oss : forkError");
@@ -202,8 +209,10 @@ pid_t forkChild(int index, int maxForks) {
     } else if (child_pid == 0) {
         //i am child
         //exec arguments
-        char *arguments[3] = {"./palin", index, NULL};
+        sprintf(arg, "%d", index);
+        char *arguments[3] = {"./palin", arg, NULL};
         execvp("./palin", arguments);
+        perror("./master: exec error: ");
         exit(0);
     }
     return child_pid;

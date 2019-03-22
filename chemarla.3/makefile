@@ -18,4 +18,4 @@ palin.o: user.c
 
 
 clean:
-	/bin/rm -f *.o $(TARGET1) $(TARGET2)
+	/bin/rm -f *.o nopalin.out palin.out $(TARGET1) $(TARGET2)
