@@ -33,3 +33,5 @@ Github was used as version control for this assignment. The link to this assignm
 -The program for whatever reason will no print out the first few number of pid into the output files.(Might just be a problem on local IDE(jetbrains))
 -Im not sure if i understood the P3 assignment, regarding the for loop. If the P3 assignment asked for each string to be printed
     5 times to see if the semaphore is working, then that is what I did.
+-Not sure how the shared memory is keeping multiple spaces or newline characters, I gave up and put a constant to asssess if its a palindrome.
+-While testing and messing with project if the program did not asses if palindrome, it would output to a file marked ?.

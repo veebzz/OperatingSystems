@@ -171,9 +171,6 @@ void isPalindrome(char str[]) {
 
 
     while (h > l) {
-        fprintf(stderr, "l : %c\n", str[l]);
-        fprintf(stderr, "h : %c\n", str[h]);
-
 
         if (str[l++] != str[h--]) {
             fprintf(stderr, "%d Not Palindrome\n", strlen(str));

@@ -56,6 +56,7 @@ int main(int argc, char **argv) {
                 printf("\t\t If no argument is provided, (input.txt)will be used as\n\t\t a default argument.\n");
                 printf("-n <argument> : This option takes an positive integer argument, which specifies the maximum number of fork processes\n");
                 printf("\t\t allowed in the program.");
+                printf("\t\t NOTE: if this option is not given, the program will read all given input making this argument optional.");
                 break;
             case 'i':
                 if (optarg == NULL) {
