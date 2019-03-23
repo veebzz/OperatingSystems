@@ -1,4 +1,4 @@
-CS 4760 Assignment #2
+CS 4760 Assignment #3
 
 
 --Usage--
@@ -7,18 +7,18 @@ Within the project directory use make to compile the source files.
 
 make
 
-The program will create an executable files called "oss" and "user" . To execute the executable, refer to the example below.
+The program will create an executable files called "master" and "palin" . To execute the executable, refer to the example below.
 
 
-./oss  -h   #Will display all possible options and their descriptions
+./master  -h   #Will display all possible options and their descriptions
 
 
-If the arguments are missing or partially missing. The program will automatically use the default input file name "input.txt" and output file name "output.txt".
+If the arguments are missing or partially missing. The program will automatically use the default input file name "input.txt".
 The command above will provide more defaults on the other executable options.
 
 --Clean--
 
-The makefile also includes a clean function which removes the executable, and object files.
+The makefile also includes a clean function which removes the executable, object files, and the 2 output files[palin.out, nopalin.out].
 
 
 make clean
@@ -30,5 +30,6 @@ Github was used as version control for this assignment. The link to this assignm
 
 --Existing Problems--
 
--Program works fine, although the times seems confusing because the parent is printing termination output when it checks the pid array in checkForTerminatedChildren.
--Not sure if global output file pointer will cause problem in the future.
+-The program for whatever reason will no print out the first few number of pid into the output files.(Might just be a problem on local IDE(jetbrains))
+-Im not sure if i understood the P3 assignment, regarding the for loop. If the P3 assignment asked for each string to be printed
+    5 times to see if the semaphore is working, then that is what I did.

@@ -29,7 +29,7 @@ pid_t forkChild(int index);
 
 bool shouldExit(pid_t *array, int activated, int maxForks);
 
-//static void interruptHandler();
+static void interruptHandler();
 
 
 int main(int argc, char **argv) {
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
     int optionIndex, maxForks = 10, maxActiveChildren = 20, activeChildren = 0;
     char *inputFileName = "input.txt";
     opterr = 0;
-    int status = 0, i;
+    int status = 0, i, index = 0;
     sem_t *sem;
 
     pid_t child_pid, wait_pid;
@@ -77,7 +77,6 @@ int main(int argc, char **argv) {
 
     //open input file
     printf("\nInput File: %s\n", inputFileName);
-    printf("Opening input file...\n");
     printf("Parent PID: %d\n", getpid());
 
     FILE *in_file = fopen(inputFileName, "r");
@@ -105,16 +104,17 @@ int main(int argc, char **argv) {
     int activatedChildren = 0;
 
     //Signal
-//    signal(SIGALRM, interruptHandler);//2 second interrupt
-//    signal(SIGINT, interruptHandler);//ctrl-c interrupt
-//    alarm(2);
+    signal(SIGALRM, interruptHandler);//2 second interrupt
+    signal(SIGINT, interruptHandler);//ctrl-c interrupt
+    alarm(120);
 
     //master parent control
     while (true) {
         //check if a child should be spawned
         if (shouldCreateChild(activeChildren, maxActiveChildren, maxForks, activatedChildren)) {
             //spawn child
-            child_pid = forkChild(activatedChildren);
+            child_pid = forkChild(index);
+            index++;
             //add spawned child pid to childPidArray
             *(childPidArray + activatedChildren) = child_pid;
             //increment activatedChildren to keep track of how many children spawned
@@ -190,7 +190,7 @@ bool shouldExit(pid_t *array, int activated, int maxForks) {
     if (activated < maxForks) {
         return false;
     }
-//    printf("asking to exit\n");
+    //exit requirement met
     return true;
 }
 
@@ -224,28 +224,24 @@ void postToSharedMemory(FILE* in_file, int maxForks, int shmid) {
         perror("./master: shmat error: ");
         exit(-1);
     }
-
     for (i = 0; i < maxForks; i++) {
+        //add input strings to shared memory
         if(fgets(fileBuffer, sizeof(fileBuffer), in_file) != NULL) {
-            printf("parent posted: %s", fileBuffer);
             strcpy((*palinArray)[i], fileBuffer);
         }
-
     }
-
     shmdt((void *) palinArray); //detach shared memory
 
 }
 
-//static void interruptHandler(){
-//    key_t key = 123;
-//    char* myList;
-//    int shmid = shmget(key, 2 * sizeof(char), IPC_CREAT | 0666);
-//    sharedInt = (int *) shmat(shmid, NULL, 0);
-//    fprintf(out_file, "Program Interrupt at %d s: %d ns\n", *(sharedInt+0), *(sharedInt+1));
-//    fclose(out_file);
-//    shmctl(shmid, IPC_RMID, NULL); //delete shared memory
-//    kill(0, SIGKILL); // kill child process
-//    exit(0);
-//}
+static void interruptHandler(){
+    key_t key = 102938;
+    const char * semName = "/sem_Chem";
+    int shmid = shmget(key, 100 * 100 , IPC_CREAT | 0666);
+    fprintf(stderr,"Program Interrupted");
+    sem_unlink(semName);
+    shmctl(shmid, IPC_RMID, NULL); //delete shared memory
+    kill(0, SIGKILL); // kill child process
+    exit(0);
+}
 
