@@ -16,8 +16,7 @@ Semaphores and Operating System Simulator
 #include <time.h>
 
 
-char* getSharedMemory(int palinIndex);
-char* isPalindrome(char str1[100]);
+
 char* strrev(char *str);
 
 key_t key = 102938;
@@ -41,6 +40,8 @@ int main(int argc, char **argv) {
 
     palinIndex = atoi(argv[1]); // get the passed index
     srand(palinIndex);
+
+    printf("CHILD[%d] STARTED\n", getpid());
     //get string in shared memory stored at the passed index
     int shmid = shmget(key, 100 * 100, IPC_CREAT | 0666);
     if (shmid < 0) {
@@ -53,10 +54,17 @@ int main(int argc, char **argv) {
         perror("./palin: shmat error: ");
         exit(1);
     }
-    palinString = (*palinArray)[palinIndex];
+
+
+    strcpy(palinString, (*palinArray)[palinIndex]);
+    strtok(palinString, "\n");
+    printf("palin %d\n", strlen(palinString));
    //use C++ style string reverse
-    strcpy(revPalinString, palinString);
-    strrev(revPalinString);
+    strcpy(revPalinString,strrev(palinString));
+    printf("%s\n", revPalinString);
+    printf("revpalin %d\n", strlen(revPalinString));
+
+
     //compare strings to see if it is a palindrome
     if(strcmp(palinString, revPalinString) == 0){
         outputFileName = "palin.out";
@@ -74,20 +82,17 @@ int main(int argc, char **argv) {
         perror("./palin: sem_open error: ");
         exit(-1);
     }
-    printf("Error 2\n");
 
     for(i = 0; i < 5; i++){
         //sleep between 0 - 3 seconds
         sleep(1);
         //entry section
         strftime(buf, sizeof(buf),"%H:%M:%S", ts);
-        printf("[%d]Error 4\n", getpid());
         fprintf(stderr, "Child[%d] starting to enter critical section at %s\n", getpid(), buf);
 
         sem_wait(sem);
 
         //critical section
-        printf("Error 5\n");
         strftime(buf, sizeof(buf),"%H:%M:%S",ts);
         fprintf(stderr,"Child[%d] is inside CRITICAL SECTION at %s\n", getpid(), buf);
         out_file = fopen(outputFileName, "a+");
@@ -96,44 +101,28 @@ int main(int argc, char **argv) {
             exit(-1);
         }
         sleep(2);
-        fprintf(out_file, "%d\t%d\t%s\n", getpid(), palinIndex, palinString);
+        printf("Printing [%d]\n", getpid());
+        printf("Printing index %d\n", palinIndex);
+        printf("Printing string %s\n", palinString);
+
+        fprintf(out_file, "%d %d %s\n", getpid(), palinIndex, palinString);
+//        fprintf(stderr, "%d %d %s\n", getpid(), palinIndex, palinString);
+
+        printf("%d %d %s\n", getpid(), palinIndex, palinString);
+
         fclose(out_file);
         sleep(2);
         //execute code to exit from critical section
         sem_post(sem);
     }
+    free(palinString);
+    free(revPalinString);
+    printf("CHILD[%d] TERMINATED\n", getpid());
+
     exit(0);
 }
 
-//char* getSharedMemory(int palinIndex,){
-//    char (*palinArray)[100][100];
-//    char* palinString;
-//
-//    //get string from index
-//    strcpy(palinString, (*palinArray)[palinIndex]);
-//    //detach shared memory
-//    shmdt((void *) palinArray);
-//
-//    return palinString;
-//
-//}
 
-//char* isPalindrome(char* str1){
-//    char* outFileName;
-//    char* str2;
-//
-//    strcpy(str2, str1);
-//    strrev(str2);
-//
-//    if(strcmp(str1, str2) == 0){
-//        outFileName = "palin.out";
-//        fprintf(stderr, "%s\n", outFileName);
-//    }else {
-//        outFileName = "nopalin.out";
-//        fprintf(stderr, "%s\n", outFileName);
-//    }
-//    return outFileName;
-//}
 
 char* strrev(char* str)
 {
@@ -149,3 +138,34 @@ char* strrev(char* str)
     }
     return str;
 }
+//char * strrev(char* str)
+//{
+//    int l, i;
+//    char *begin_ptr, *end_ptr, ch;
+//
+//    // Get the length of the string
+//    l = strlen(str);
+//
+//    // Set the begin_ptr and end_ptr
+//    // initially to start of string
+//    begin_ptr = str;
+//    end_ptr = str;
+//
+//    // Move the end_ptr to the last character
+//    for (i = 0; i < l - 1; i++)
+//        end_ptr++;
+//
+//    // Swap the char from start and end
+//    // index using begin_ptr and end_ptr
+//    for (i = 0; i < l / 2; i++) {
+//
+//        // swap character
+//        ch = *end_ptr;
+//        *end_ptr = *begin_ptr;
+//        *begin_ptr = ch;
+//
+//        // update pointers positions
+//        begin_ptr++;
+//        end_ptr--;
+//    }
+//}

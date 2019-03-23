@@ -43,10 +43,6 @@ int main(int argc, char **argv) {
 
     pid_t child_pid, wait_pid;
 
-    if (sem_unlink(semName) == -1) {
-        perror("./master: sem_unlink error: ");
-        exit(-1);
-    }
 
     //set default input file name
     inputFileName = "input.txt";
@@ -118,7 +114,6 @@ int main(int argc, char **argv) {
         //check if a child should be spawned
         if (shouldCreateChild(activeChildren, maxActiveChildren, maxForks, activatedChildren)) {
             //spawn child
-            printf("Child[%d] started\n", child_pid);
             child_pid = forkChild(activatedChildren);
             //add spawned child pid to childPidArray
             *(childPidArray + activatedChildren) = child_pid;
@@ -129,6 +124,7 @@ int main(int argc, char **argv) {
         activeChildren = checkForTerminatedChildren(childPidArray, activatedChildren);
         //check termination conditions
         if (shouldExit(childPidArray, activatedChildren, maxForks)) {
+            sem_close(sem);
             if (sem_unlink(semName) == -1) {
                 perror("./master: sem_unlink error: ");
                 exit(-1);
@@ -172,7 +168,6 @@ int checkForTerminatedChildren(pid_t *array, int activated) {
             checkId = waitpid(*(array + i), &status, WNOHANG);
             //if it is dead, mark them as -1 to not check this anymore
             if (checkId == *(array + i)) {
-                printf("Child[%d] terminated\n", *(array + i));
                 *(array + i) = -1;
             } else {
                 active++;
@@ -232,7 +227,7 @@ void postToSharedMemory(FILE* in_file, int maxForks, int shmid) {
 
     for (i = 0; i < maxForks; i++) {
         if(fgets(fileBuffer, sizeof(fileBuffer), in_file) != NULL) {
-            printf("%s", fileBuffer);
+            printf("parent posted: %s", fileBuffer);
             strcpy((*palinArray)[i], fileBuffer);
         }
 
