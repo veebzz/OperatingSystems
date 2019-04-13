@@ -16,6 +16,7 @@ Concurrent UNIX processes and shared memory
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <stdbool.h>
+#include "p4Header.h"
 
 #define BILLION  1e9
 
@@ -37,10 +38,12 @@ pid_t forkChild(char* duration, char* outputFileName);
 bool shouldExit(pid_t* array, int activated, int maxForks, memTime fileTime);
 memTime readNextLine(FILE* input_file);
 static void interruptHandler();
+checkTime *simulatedClockPtr;
+pcbStruct *pcbStructPtr;
 
 
 int main(int argc, char **argv) {
-    int optionIndex, maxForks = 4, maxActiveChildren = 2, activeChildren = 0;
+    int optionIndex, maxForks = 1, maxActiveChildren = 2, activeChildren = 0;
     char *inputFileName = "input.txt";
     char *outputFileName = "output.txt";
     char *fileBuffer[256];
@@ -147,7 +150,8 @@ int main(int argc, char **argv) {
     }
 
     // release shared memory and file
-    shmctl(key,IPC_RMID,NULL);
+    shmctl(simulatedClockPtr,IPC_RMID,NULL);
+    shmctl(pcbStructPtr,IPC_RMID,NULL);
     fclose(out_file);
     free(childPidArray);
     printf("Parent[%d] Finished\n", getpid());
@@ -170,9 +174,7 @@ char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks,
     if(!fileTime.valid){
         return NULL;
     }
-    //change file and current(shared memory segment) to nano seconds
-    fileNanoTotal = (fileTime.seconds * BILLION) + fileTime.nseconds;
-    currentNanoTotal = (currentTime.seconds * BILLION) + currentTime.nseconds;
+
     //If simulated clock has past the entry time stated in the input file spawn the child
     if(currentNanoTotal > fileNanoTotal){
         return fileTime.duration;
@@ -206,7 +208,7 @@ int checkForTerminatedChildren(pid_t* array, FILE* out_file, int activated, memT
     return active;
 }
 
-bool shouldExit(pid_t* array, int activated, int maxForks, memTime fileTime){
+bool shouldExit(pid_t* array, int activated, int maxForks){
     int i = 0;
     for (i = 0; i < activated; i++){
         //if the child pid array has an active child
@@ -214,10 +216,7 @@ bool shouldExit(pid_t* array, int activated, int maxForks, memTime fileTime){
             return false;
         }
     }
-    //if fgets takes in empty lines
-    if(!fileTime.valid){
-        return true;
-    }
+
     //if maxforks have not reach end yet
     if (activated < maxForks){
         return false;
@@ -242,29 +241,37 @@ pid_t forkChild(char* duration, char* outputFileName){
     return child_pid;
 }
 
-key_t startSharedMemory(){
-    int *sharedInt;
-    key_t key = 102938;
-    //allocate shared memory
-    int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
-    if (shmid < 0) {
-        perror("./user: shmid error: ");
+void startSharedMemory(){
+    //store clock id from shmget
+    int clockShmId = shmget(clockKey, sizeof(checkTime), IPC_CREAT | 0666);
+    if (clockShmId < 0) {
+        perror("./oss: shmid error: ");
         exit(1);
     }
-    //attach sharedInt pointer to shared memory
-    sharedInt = (int *) shmat(shmid, NULL, 0);
+    //attach shared memory to clock pointer
+    simulatedClockPtr =(struct *) shmat(clockShmId, NULL, 0);
 
-    if (*sharedInt == -1) {
+    if (simulatedClock == -1) {
         perror("./oss: shmat error: ");
         exit(1);
     }
+    //set starting clock to 0
+    (*simulatedClockPtr).seconds = 0;
+    (*simulatedClockPtr).nanoseconds = 0;
+    //detach
+    shmdt((void *) simulatedClockPtr);
+    // same allocation for pcb shared mem
 
-    //initialize seconds and nanoseconds in shared memory
-    *(sharedInt+0) = 0;   //seconds
-    *(sharedInt+1) = 0;   //nanoseconds
-
-    shmdt((void *) sharedInt); //detach shared memory
-    return key;
+    int pcbShmId = shmget(pcbKey, sizeof(pcbStruct), IPC_CREAT | 0666);
+    if (pcbShmId < 0) {
+        perror("./oss: shmid error: ");
+        exit(1);
+    }
+    pcbStructPtr = (struct *) shmat(pcbShmId, NULL, 0);
+    if (simulatedClock == -1) {
+        perror("./oss: shmat error: ");
+        exit(1);
+    }
 }
 
 memTime incrementSharedMemory(key_t key, int value) {
