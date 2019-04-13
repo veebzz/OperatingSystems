@@ -9,15 +9,14 @@
 #include "p4Header.h"
 
 #define BILLION  1e9
-
-struct checkTime checkSharedMemory();
+memTime checkSharedMemory();
 
 int main(int argc, char **argv) {
     long duration;
     long elapsed;
     int* sharedInt;
     char* outputFileName;
-    struct checkTime currentTime;
+   memTime currentTime;
 
     duration = atoi(argv[1]); // get the passed duration
     currentTime = checkSharedMemory();
@@ -38,10 +37,10 @@ int main(int argc, char **argv) {
     exit(0);
 }
 
-struct checkTime checkSharedMemory(){
+memTime checkSharedMemory(){
     key_t key = 102938;
     int* sharedInt;
-    struct checkTime currentTime;
+    memTime currentTime;
     int shmid = shmget(key, NULL, 0); /* return value from shmget() */
 
     if (shmid < 0) {

@@ -7,16 +7,17 @@
 //globals
 key_t clockKey = 382910;
 key_t pcbKey = 102938;
+key_t msgKey = 291038;
 
-struct checkTime{
+typedef struct memTime{
     unsigned int seconds;
     unsigned int nseconds;
-};
+}memTime;
 
 typedef struct PCB{
-    struct checkTime totalCpuTime;
-    struct checkTime totalTimeInSystem;
-    struct checkTime elapsedBurstTime;
+    memTime totalCpuTime;
+    memTime totalTimeInSystem;
+    memTime elapsedBurstTime;
     int processClass;
     pid_t pid;
     int simPid;
@@ -25,7 +26,7 @@ typedef struct PCB{
 
 struct sharedResources{
     struct PCB controlTable[18];
-    struct checkTime time;
+    memTime time;
 };
 
 typedef struct msgQ{

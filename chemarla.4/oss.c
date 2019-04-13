@@ -19,42 +19,26 @@ Concurrent UNIX processes and shared memory
 #include "p4Header.h"
 
 #define BILLION  1e9
-
-typedef struct memTime{
-    int seconds;
-    int nseconds;
-    char* duration[20];
-    bool valid;
-}memTime;
+#define MILLION  1e6
 
 FILE* out_file;
 
-
-key_t startSharedMemory();
-memTime incrementSharedMemory(key_t key, int value);
-char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks,  int activatedChildren, memTime fileTime, memTime currentTime);
-int checkForTerminatedChildren(pid_t* array, FILE* outfileHandler, int activated, memTime currentTime);
+int startSharedMemory();
+memTime incrementSharedMemory(int value);
+char* shouldCreateChild(int maxForks, int activatedChildren);
 pid_t forkChild(char* duration, char* outputFileName);
-bool shouldExit(pid_t* array, int activated, int maxForks, memTime fileTime);
-memTime readNextLine(FILE* input_file);
-static void interruptHandler();
-checkTime *simulatedClockPtr;
+bool shouldExit(pid_t* array, int activated, int maxForks, memTime currentTime);
+//static void interruptHandler();
+memTime *simulatedClockPtr;
 pcbStruct *pcbStructPtr;
 
 
 int main(int argc, char **argv) {
-    int optionIndex, maxForks = 1, maxActiveChildren = 2, activeChildren = 0;
-    char *inputFileName = "input.txt";
+    int optionIndex, maxForks = 1, activeChildren = 0;
     char *outputFileName = "output.txt";
-    char *fileBuffer[256];
-    const char space[2] = " ";
-    char *token;
-    char *duration;
     opterr = 0;
-    int status = 0, i;
-    int incrementValue;
-
-
+    int status = 0, i, msgID;
+    int incrementValue = MILLION;
 
     pid_t child_pid, wait_pid;
     //check if arguments are given
@@ -72,7 +56,6 @@ int main(int argc, char **argv) {
                 printf("\t\t allowed in the program. Maximum active allowed is 20, if argument is above 20, it will default to 20.\n");
                 break;
 
-
             case 'o':
                 //set output file to output.txt
                 // if no argument given
@@ -82,10 +65,7 @@ int main(int argc, char **argv) {
                 outputFileName = optarg;
 
                 printf("Output File: %s\n", outputFileName);
-                //If only the output was given
-                if (inputFileName == NULL) { //set input file to default if user only provides input data file
-                    inputFileName = "input.txt";
-                }
+
                 break;
 
             case 'n':
@@ -108,80 +88,68 @@ int main(int argc, char **argv) {
         perror("./oss: File Error: ");
         return 1;
     }
-    //get key from starting shared memory segment
-    key_t key = startSharedMemory();
-
+    //get msgid from starting shared memory segment
+    msgID = startSharedMemory();
+    printf("MSGID ARG is %d\n", msgID);
 
     //read second line to start incrementing and store line contents in fileTime struct
-    int *childPidArray = malloc(maxForks * sizeof(int));
+//    int *childPidArray = malloc(maxForks * sizeof(int));
     int activatedChildren = 0;
     memTime currentTime;
     currentTime.nseconds = 0;
     currentTime.seconds = 0;
+
+
     //Signal
 //    signal(SIGALRM, interruptHandler);
 //    signal(SIGINT, interruptHandler);//ctrl-c interrupt
 //    alarm(2);
 
     //oss parent control
-    while (true){
-        //increment time
-        currentTime = incrementSharedMemory(key, incrementValue);
-        //check if a child should be spawned
-        if ((duration = shouldCreateChild(activeChildren, maxActiveChildren, maxForks, activatedChildren, fileTime, currentTime)) != NULL) {
-            //spawn child
-            child_pid = forkChild(duration, outputFileName);
-            printf("Child[%d] started with duration %d at time %d s:%d ns\n", child_pid, atoi(duration), currentTime.seconds, currentTime.nseconds);
-            fprintf(out_file, "Child[%d] started with duration %d at time %d s:%d ns\n", child_pid, atoi(duration), currentTime.seconds, currentTime.nseconds);
-            //add spawned child pid to childPidArray
-            *(childPidArray + activatedChildren) = child_pid;
-            //increment activatedChildren to keep track of how many children spawned
-            activatedChildren++;
-            //read the next line and store into fileTime for next while loop iteration
-            fileTime = readNextLine(in_file);
-        }
-        // check for terminated/get update for active children
-        activeChildren = checkForTerminatedChildren(childPidArray, out_file, activatedChildren, currentTime);
-
-        if (shouldExit(childPidArray, activatedChildren, maxForks, fileTime)){
-            printf("Exit condition met\n");
-            break;
-        }
-    }
+//    while (true){
+//        //increment time
+//        currentTime = incrementSharedMemory(incrementValue);
+//        //check if a child should be spawned
+//        if (activatedChildren <= 5) {
+//            //spawn child
+//            child_pid = forkChild(duration, outputFileName);
+//            printf("Child[%d] started at time %d s:%d ns\n", child_pid, currentTime.seconds, currentTime.nseconds);
+//            //add spawned child pid to childPidArray
+//            *(childPidArray + activatedChildren) = child_pid;
+//            //increment activatedChildren to keep track of how many children spawned
+//            activatedChildren++;
+//            //read the next line and store into fileTime for next while loop iteration
+//            fileTime = readNextLine(in_file);
+//        }
+//        // check for terminated/get update for active children
+//        activeChildren = checkForTerminatedChildren(childPidArray, out_file, activatedChildren, currentTime);
+//
+//        if (shouldExit(childPidArray, activatedChildren, maxForks, fileTime)){
+//            printf("Exit condition met\n");
+//            break;
+//        }
+//    }
 
     // release shared memory and file
     shmctl(simulatedClockPtr,IPC_RMID,NULL);
     shmctl(pcbStructPtr,IPC_RMID,NULL);
+    msgctl(msgID,IPC_RMID, NULL);
     fclose(out_file);
-    free(childPidArray);
+//    free(childPidArray);
     printf("Parent[%d] Finished\n", getpid());
     return 0;
 
 }
 
 
-char* shouldCreateChild(int activeChildren, int maxActiveChildren, int maxForks, int activatedChildren, memTime fileTime, memTime currentTime) {
-    long int currentNanoTotal, fileNanoTotal;
+char* shouldCreateChild(int maxForks, int activatedChildren) {
     //check if maxForks reached
     if(activatedChildren >= maxForks){
         return NULL;
     }
-    //check if current active children limit reached
-    if(activeChildren >= maxActiveChildren){
-        return NULL;
-    }
-    //Additional check if fgets took read a empty line
-    if(!fileTime.valid){
-        return NULL;
-    }
 
-    //If simulated clock has past the entry time stated in the input file spawn the child
-    if(currentNanoTotal > fileNanoTotal){
-        return fileTime.duration;
-    }
-    else{
-        return NULL;
-    }
+    return true;
+
 }
 
 int checkForTerminatedChildren(pid_t* array, FILE* out_file, int activated, memTime currentTime) {
@@ -208,7 +176,7 @@ int checkForTerminatedChildren(pid_t* array, FILE* out_file, int activated, memT
     return active;
 }
 
-bool shouldExit(pid_t* array, int activated, int maxForks){
+bool shouldExit(pid_t* array, int activated, int maxForks, memTime currenTime){
     int i = 0;
     for (i = 0; i < activated; i++){
         //if the child pid array has an active child
@@ -241,46 +209,53 @@ pid_t forkChild(char* duration, char* outputFileName){
     return child_pid;
 }
 
-void startSharedMemory(){
+int startSharedMemory(){
     //store clock id from shmget
-    int clockShmId = shmget(clockKey, sizeof(checkTime), IPC_CREAT | 0666);
+    int clockShmId = shmget(clockKey, sizeof(memTime), IPC_CREAT | 0666);
     if (clockShmId < 0) {
-        perror("./oss: shmid error: ");
+        perror("./oss: clockShmId error: ");
         exit(1);
     }
     //attach shared memory to clock pointer
-    simulatedClockPtr =(struct *) shmat(clockShmId, NULL, 0);
+    simulatedClockPtr = shmat(clockShmId, NULL, 0);
 
-    if (simulatedClock == -1) {
-        perror("./oss: shmat error: ");
+    if (simulatedClockPtr == -1) {
+        perror("./oss: simulatedClockPtr error: ");
         exit(1);
     }
     //set starting clock to 0
     (*simulatedClockPtr).seconds = 0;
-    (*simulatedClockPtr).nanoseconds = 0;
+    (*simulatedClockPtr).nseconds = 0;
     //detach
     shmdt((void *) simulatedClockPtr);
     // same allocation for pcb shared mem
 
     int pcbShmId = shmget(pcbKey, sizeof(pcbStruct), IPC_CREAT | 0666);
     if (pcbShmId < 0) {
-        perror("./oss: shmid error: ");
+        perror("./oss: pcbShmId error: ");
         exit(1);
     }
-    pcbStructPtr = (struct *) shmat(pcbShmId, NULL, 0);
-    if (simulatedClock == -1) {
-        perror("./oss: shmat error: ");
+    pcbStructPtr = shmat(pcbShmId, NULL, 0);
+    if (pcbStructPtr == -1) {
+        perror("./oss: pcbStructPtr error: ");
         exit(1);
     }
+    //message Queue shared memory allocation (GfG)
+    int msgId = msgget(msgKey, 0666 | IPC_CREAT);
+    if (msgId < 0) {
+        perror("./oss: msgget error: ");
+        exit(1);
+    }
+    return msgId;
 }
 
-memTime incrementSharedMemory(key_t key, int value) {
+memTime incrementSharedMemory(int value) {
     int *sharedInt;
     unsigned int nextNano;
     unsigned int nextSeconds;
     memTime currentTime;
     //allocate shared memory
-    int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
+    int shmid = shmget(clockKey, sizeof(memTime), IPC_CREAT | 0666);
 
     if (shmid < 0) {
         perror("./user: shmid error: ");
@@ -293,7 +268,7 @@ memTime incrementSharedMemory(key_t key, int value) {
         perror("./oss: shmat error: ");
         exit(1);
     }
-    //intialize seconds and nanoseconds in shared memory
+    //initialize seconds and nanoseconds in shared memory
     nextSeconds = *(sharedInt+0);   //seconds
     nextNano = *(sharedInt+1)+ value;   //nanoseconds
     //check if nanoseconds reached over billion
@@ -312,14 +287,16 @@ memTime incrementSharedMemory(key_t key, int value) {
     return currentTime;
 }
 
-static void interruptHandler(){
-    key_t key = 102938;
-    int* sharedInt;
-    int shmid = shmget(key, 2 * sizeof(int), IPC_CREAT | 0666);
-    sharedInt = (int *) shmat(shmid, NULL, 0);
-    fprintf(out_file, "Program Interrupt at %d s: %d ns\n", *(sharedInt+0), *(sharedInt+1));
-    fclose(out_file);
-    shmctl(shmid, IPC_RMID, NULL); //delete shared memory
-    kill(0, SIGKILL); // kill child process
-    exit(0);
-}
+//static void interruptHandler(){
+//    key_t clockKey = 102938;
+//    key_t pcbKey = 382910;
+//
+//    int clockId = shmget(clockKey, sizeof(struct memTime), IPC_CREAT | 0666);
+//    int pcbId = shmget(pcbKey, sizeof(struct pcbStruct), IPC_CREAT | 0666);
+//    fprintf(out_file, "Program Interrupt at %d s: %d ns\n", *(sharedInt+0), *(sharedInt+1));
+//    fclose(out_file);
+//    shmctl(clockId, IPC_RMID, NULL); //delete shared memory
+//    shmctl(pcbId, IPC_RMID, NULL);
+//    kill(0, SIGKILL); // kill child process
+//    exit(0);
+//}
