@@ -36,6 +36,8 @@ bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentT
 //static void interruptHandler();
 memTime getNextProcessSpawnTime();
 pcbStruct getPCB(memTime currentTime, int simPid);
+memTime *sharedClockPtr;
+pcbStruct *pcbStructTable;
 
 
 
@@ -136,7 +138,7 @@ int main(int argc, char **argv) {
             }
             pcbStructTable[openPid] = getPCB(currentTime, openPid);
 //            *(pcbStructPtr + openPid) = getPCB(currentTime, openPid);
-            printf("pcb priority %d and simpid %d\n", pcbStructTable[simulatedPidArray].priority, pcbStructTable[openPid].simPid);
+            printf("pcb priority %d and simpid %d\n", pcbStructTable[openPid].priority, pcbStructTable[openPid].simPid);
 //            printf("pcb priority %d and simpid %d\n", *(pcbStructPtr + openPid)->priority, *(pcbStructPtr + openPid)->simPid);
 
             child_pid = forkChild(openPid, msgID, simulatedPidArray);
@@ -239,9 +241,8 @@ pid_t forkChild(int simPid, int msgId, int simPidArray[]){
     return child_pid;
 }
 //memory allocation for clock, pcbtable, and message queue
-int startSharedMemory(){
-//    memTime *sharedClockPtr;
-//    pcbStruct *pcbStructTable;
+int startSharedMemory(memTime *sharedClockPtr, pcbStruct *pcbStructTable){
+
     //store clock id from shmget
     clockShmId = shmget(clockKey, sizeof(memTime), IPC_CREAT | 0666);
     if (clockShmId < 0) {

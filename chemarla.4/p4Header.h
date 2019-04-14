@@ -10,8 +10,7 @@ key_t pcbKey = 102938;
 key_t msgKey = 291038;
 int clockShmId;
 int pcbShmId;
-memTime *sharedClockPtr;
-pcbStruct *pcbStructTable;
+
 
 typedef struct memTime{
     unsigned int seconds;
