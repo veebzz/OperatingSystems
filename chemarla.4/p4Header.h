@@ -8,6 +8,8 @@
 key_t clockKey = 382910;
 key_t pcbKey = 102938;
 key_t msgKey = 291038;
+int clockShmId;
+int pcbShmId;
 
 typedef struct memTime{
     unsigned int seconds;
