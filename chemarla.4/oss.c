@@ -16,21 +16,26 @@ Concurrent UNIX processes and shared memory
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <stdbool.h>
+#include <math.h>
 #include "p4Header.h"
 
 #define BILLION  1e9
 #define MILLION  1e6
 #define MAXFORKS 18
+#define MAXTIMEBETWEENNEWPROCSSECS 1
+#define MAXTIMEBETWEENNEWPROCSNSECS 500000000
+
 
 FILE* out_file;
 
 int startSharedMemory(memTime currentTime, pcbStruct *pcbStructPtr);
 memTime incrementSharedMemory(int value);
-char* shouldCreateChild(int maxForks, int activatedChildren, int *simPidArray);
+char* shouldCreateChild(int maxForks, int activatedChildren);
 pid_t forkChild(int simPid, int msgId, int simPidArray[]);
 int getOpenSimPid(int *simPidArray, int maxForks);
-bool shouldExit(pid_t* array, int activated, int maxForks, memTime currentTime);
+bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime);
 //static void interruptHandler();
+memTime spawnRandomIntervalProcess();
 
 
 
@@ -108,13 +113,7 @@ int main(int argc, char **argv) {
     //get msgid from starting shared memory segment
     msgID = startSharedMemory(currentTime, pcbStructPtr);
     printf("MSGID ARG is %d\n", msgID);
-
-//    currentTime = incrementSharedMemory(incrementValue);
-//    printf("%d:%d\n", currentTime.seconds, currentTime.nseconds);
-
-
-
-
+    memTime randTime = spawnRandomIntervalProcess();
     //Signal
 //    signal(SIGALRM, interruptHandler);
 //    signal(SIGINT, interruptHandler);//ctrl-c interrupt
@@ -125,13 +124,14 @@ int main(int argc, char **argv) {
         //increment time
         currentTime = incrementSharedMemory(incrementValue);
         //check if a child should be spawned
-        if (activatedChildren <= 2) {
+        if (shouldCreateChild(maxForks, activatedChildren)) {
             //spawn child
             openPid = getOpenSimPid(simulatedPidArray, maxForks);
             if(openPid == 1){
                 simulatedPidArray[openPid] = 0;
-            }else{
+            }else if(openPid == -1){
                 printf("Something happened\n");
+                exit(-1);
             }
             child_pid = forkChild(openPid, msgID, simulatedPidArray);
             printf("Child[%d] started at time %d s:%d ns\n", child_pid, currentTime.seconds, currentTime.nseconds);
@@ -143,13 +143,11 @@ int main(int argc, char **argv) {
         // check for terminated/get update for active children
 //        activeChildren = checkForTerminatedChildren(childPidArray, out_file, activatedChildren, currentTime);
 
-//        if (shouldExit(childPidArray, activatedChildren, maxForks, fileTime)){
-//            printf("Exit condition met\n");
-//            break;
-//        }
-        if(activatedChildren == 2){
+        if (shouldExit(simulatedPidArray, activatedChildren, maxForks, currentTime)){
+            printf("Exit condition met\n");
             break;
         }
+
     }
 
     // release shared memory and file
@@ -165,12 +163,7 @@ int main(int argc, char **argv) {
 }
 
 
-char* shouldCreateChild(int maxForks, int activatedChildren, int *simPidArray){
-    int i;
-    for(i = 0; i < maxForks; i++){
-        if(*(simPidArray+i) == 1)
-            return true;
-    }
+char* shouldCreateChild(int maxForks, int activatedChildren){
 
     //check if maxForks reached
     if(activatedChildren >= maxForks){
@@ -205,13 +198,9 @@ int checkForTerminatedChildren(pid_t* array, FILE* out_file, int activated, memT
     return active;
 }
 
-bool shouldExit(pid_t* array, int activated, int maxForks, memTime currentTime){
-    int i = 0;
-    for (i = 0; i < activated; i++){
-        //if the child pid array has an active child
-        if (*(array+i) > 0){
-            return false;
-        }
+bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime){
+    if(activated == 5){
+        return true;
     }
 
     //if maxforks have not reach end yet
@@ -243,7 +232,7 @@ pid_t forkChild(int simPid, int msgId, int simPidArray[]){
     }
     return child_pid;
 }
-
+//memory allocation for clock, pcbtable, and message queue
 int startSharedMemory(memTime currentTime, pcbStruct *pcbStructPtr){
     memTime *sharedClockPtr;
     //store clock id from shmget
@@ -290,7 +279,7 @@ memTime incrementSharedMemory(int value) {
     unsigned int nextNano;
     unsigned int nextSeconds;
     memTime currentTime;
-    //allocate shared memory
+    //get previously allocated shared memory's id
     int shmid = shmget(clockKey, sizeof(memTime), IPC_CREAT | 0666);
 
     if (shmid < 0) {
@@ -339,6 +328,7 @@ memTime incrementSharedMemory(int value) {
 //    exit(0);
 //}
 
+//get the next open simulated pid
 int getOpenSimPid(int *simPidArray, int maxForks){
     int i;
     for(i = 0; i < maxForks; i++) {
@@ -349,4 +339,14 @@ int getOpenSimPid(int *simPidArray, int maxForks){
     }
     printf("all taken\n");
     return -1;
+}
+
+memTime spawnRandomIntervalProcess(){
+    memTime randomInterval;
+    srand(time(NULL));
+    randomInterval.seconds = rand() % MAXTIMEBETWEENNEWPROCSSECS + 1;
+    randomInterval.nseconds = rand() % MAXTIMEBETWEENNEWPROCSNSECS + 1;
+    printf("random seconds: %d\n", randomInterval.seconds);
+    printf("random nseconds: %d\n", randomInterval.nseconds);
+    return randomInterval;
 }
