@@ -20,13 +20,14 @@ Concurrent UNIX processes and shared memory
 
 #define BILLION  1e9
 #define MILLION  1e6
+#define MAXFORKS 18
 
 FILE* out_file;
 
 int startSharedMemory(memTime currentTime, pcbStruct *pcbStructPtr);
 memTime incrementSharedMemory(int value);
 char* shouldCreateChild(int maxForks, int activatedChildren, int *simPidArray);
-pid_t forkChild(int simPid, int msgId);
+pid_t forkChild(int simPid, int msgId, int simPidArray[]);
 int getOpenSimPid(int *simPidArray, int maxForks);
 bool shouldExit(pid_t* array, int activated, int maxForks, memTime currentTime);
 //static void interruptHandler();
@@ -35,12 +36,13 @@ bool shouldExit(pid_t* array, int activated, int maxForks, memTime currentTime);
 
 
 int main(int argc, char **argv) {
-    int optionIndex, maxForks = 1, activeChildren = 0;
-    char *outputFileName = "output.txt";
+    int optionIndex, maxForks = 18, activeChildren = 0;
+    char *outputFileName = "log.txt";
     opterr = 0;
     int status = 0, i, msgID;
     int incrementValue = 10000;
     pcbStruct *pcbStructPtr;
+    int openPid;
 
     pid_t child_pid, wait_pid;
     //check if arguments are given
@@ -76,7 +78,7 @@ int main(int argc, char **argv) {
 
                 if(maxForks > 18){
                     printf("Max processes argument cannot be over 18. Default of 18 is set.");
-                    maxForks = 18;
+                    maxForks = MAXFORKS;
                 }
                 break;
 
@@ -95,7 +97,7 @@ int main(int argc, char **argv) {
         perror("./oss: File Error: ");
         return 1;
     }
-
+    int *childPidArray = malloc(maxForks * sizeof(int));
     int simulatedPidArray[maxForks];
     for(i = 0; i < maxForks; i++){
         //set all elements to 1 to indicate availability
@@ -107,8 +109,8 @@ int main(int argc, char **argv) {
     msgID = startSharedMemory(currentTime, pcbStructPtr);
     printf("MSGID ARG is %d\n", msgID);
 
-    currentTime = incrementSharedMemory(incrementValue);
-    printf("%d:%d\n", currentTime.seconds, currentTime.nseconds);
+//    currentTime = incrementSharedMemory(incrementValue);
+//    printf("%d:%d\n", currentTime.seconds, currentTime.nseconds);
 
 
 
@@ -119,34 +121,44 @@ int main(int argc, char **argv) {
 //    alarm(2);
 
     //oss parent control
-//    while (true){
-//        //increment time
-//        currentTime = incrementSharedMemory(incrementValue);
-//        //check if a child should be spawned
-//        if (activatedChildren <= 5) {
-//            //spawn child
-//            child_pid = forkChild(int simPid,);
-//            printf("Child[%d] started at time %d s:%d ns\n", child_pid, currentTime.seconds, currentTime.nseconds);
-//            //add spawned child pid to childPidArray
-//            *(childPidArray + activatedChildren) = child_pid;
-//            //increment activatedChildren to keep track of how many children spawned
-//            activatedChildren++;
-//        }
-//        // check for terminated/get update for active children
+    while (true){
+        //increment time
+        currentTime = incrementSharedMemory(incrementValue);
+        //check if a child should be spawned
+        if (activatedChildren <= 2) {
+            //spawn child
+            openPid = getOpenSimPid(simulatedPidArray, maxForks);
+            if(openPid == 1){
+                simulatedPidArray[openPid] = 0;
+            }else{
+                printf("Something happened\n");
+            }
+            child_pid = forkChild(openPid, msgID, simulatedPidArray);
+            printf("Child[%d] started at time %d s:%d ns\n", child_pid, currentTime.seconds, currentTime.nseconds);
+            //add spawned child pid to childPidArray
+            *(childPidArray + activatedChildren) = child_pid;
+            //increment activatedChildren to keep track of how many children spawned
+            activatedChildren++;
+        }
+        // check for terminated/get update for active children
 //        activeChildren = checkForTerminatedChildren(childPidArray, out_file, activatedChildren, currentTime);
-//
+
 //        if (shouldExit(childPidArray, activatedChildren, maxForks, fileTime)){
 //            printf("Exit condition met\n");
 //            break;
 //        }
-//    }
+        if(activatedChildren == 2){
+            break;
+        }
+    }
 
     // release shared memory and file
+    sleep(5);
     shmctl(clockShmId,IPC_RMID,NULL);
     shmctl(pcbShmId,IPC_RMID,NULL);
     msgctl(msgID,IPC_RMID, NULL);
     fclose(out_file);
-//    free(childPidArray);
+    free(childPidArray);
     printf("Parent[%d] Finished\n", getpid());
     return 0;
 
@@ -210,9 +222,12 @@ bool shouldExit(pid_t* array, int activated, int maxForks, memTime currentTime){
     return true;
 }
 
-pid_t forkChild(int simPid, int msgId){
+pid_t forkChild(int simPid, int msgId, int simPidArray[]){
+    printf("in forkChild\n");
     pid_t child_pid = fork();
-    char *simPidStr, *msgIdStr;
+    char simPidStr[10], msgIdStr[10];
+
+    simPidArray[simPid] = 0;
     sprintf(simPidStr,"%d",simPid);
     sprintf(msgIdStr, "%d", msgId);
     //fork fail check
@@ -305,7 +320,7 @@ memTime incrementSharedMemory(int value) {
     currentTime.nseconds = nextNano;
 
 
-    shmdt((void *) sharedInt); //detach shared memory
+    shmdt(sharedInt); //detach shared memory
 
     return currentTime;
 }
@@ -326,9 +341,12 @@ memTime incrementSharedMemory(int value) {
 
 int getOpenSimPid(int *simPidArray, int maxForks){
     int i;
-    for(i = 0; i < maxForks; i++){
-        if(*(simPidArray+i) == 1)
+    for(i = 0; i < maxForks; i++) {
+        if (simPidArray[i] == 1) {
+            printf("open\n");
             return i;
+        }
     }
+    printf("all taken\n");
     return -1;
 }

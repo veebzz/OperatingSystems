@@ -1,6 +1,4 @@
-//
-// Created by veebz on 3/2/2019.
-//
+
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <stdio.h>
@@ -12,42 +10,33 @@
 memTime checkSharedMemory();
 
 int main(int argc, char **argv) {
-    long duration;
-    long elapsed;
+
     int* sharedInt;
     char* outputFileName;
-   memTime currentTime;
+    memTime currentTime;
+    int childPid, msgId;
 
-    duration = atoi(argv[1]); // get the passed duration
+    childPid = atoi(argv[1]);
+    msgId = atoi(argv[2]);
     currentTime = checkSharedMemory();
 
-    //add current simulated clock to duration
-    duration += ((currentTime.seconds * BILLION) + currentTime.nseconds);
+    printf("Child PID: %d got msgID: %d\n", childPid, msgId);
+    printf(" user: %d:%d\n", currentTime.seconds, currentTime.nseconds);
 
-    while(1) {
-        //update timePtr every while iteration
-        currentTime = checkSharedMemory();
 
-        elapsed = (currentTime.seconds * BILLION) + currentTime.nseconds;
-        if (elapsed > duration) {
-            printf("USER:[%d] terminated at time %d s:%d ns\n", getpid(), currentTime.seconds, currentTime.nseconds);
-            break;
-        }
-    }
     exit(0);
 }
 
 memTime checkSharedMemory(){
-    key_t key = 102938;
     int* sharedInt;
     memTime currentTime;
-    int shmid = shmget(key, NULL, 0); /* return value from shmget() */
+    int shmid = shmget(clockKey, sizeof(memTime), IPC_CREAT | 0666); /* return value from shmget() */
 
     if (shmid < 0) {
-        perror("./oss: shmid error: ");
+        perror("\n./user: shmid error: ");
         exit(-1);
     }
-    sharedInt = (int *) shmat(shmid, NULL, 0);      //assign shared memory to sharedInt pointer
+    sharedInt = shmat(shmid, NULL, 0);      //assign shared memory to sharedInt pointer
     if (*sharedInt == -1) {
         perror("./user: shmat error: ");
         exit(-1);
