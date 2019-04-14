@@ -29,12 +29,12 @@ FILE* out_file;
 
 int startSharedMemory();
 memTime incrementSharedMemory(int value);
-char* shouldCreateChild(int maxForks, int activatedChildren);
+bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime);
 pid_t forkChild(int simPid, int msgId, int simPidArray[]);
 int getOpenSimPid(int *simPidArray, int maxForks);
 bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime);
 //static void interruptHandler();
-memTime getNextProcessSpawnTime();
+memTime getNextProcessSpawnTime(memTime currentTime);
 pcbStruct getPCB(memTime currentTime, int simPid);
 memTime *sharedClockPtr;
 pcbStruct *pcbStructTable;
@@ -116,7 +116,9 @@ int main(int argc, char **argv) {
     //get msgid from starting shared memory segment
     msgID = startSharedMemory();
     printf("MSGID ARG is %d\n", msgID);
-    memTime randTime = getNextProcessSpawnTime();
+    memTime randTime;
+    randTime.seconds = 0;
+    randTime.nseconds = 0;
     //Signal
 //    signal(SIGALRM, interruptHandler);
 //    signal(SIGINT, interruptHandler);//ctrl-c interrupt
@@ -127,7 +129,7 @@ int main(int argc, char **argv) {
         //increment time
         currentTime = incrementSharedMemory(incrementValue);
         //check if a child should be spawned
-        if (shouldCreateChild(maxForks, activatedChildren)) {
+        if (shouldCreateChild(maxForks, activatedChildren, currentTime, randTime)) {
             //spawn child
             openPid = getOpenSimPid(simulatedPidArray, maxForks);
             if(openPid == 1){
@@ -147,6 +149,7 @@ int main(int argc, char **argv) {
             *(childPidArray + activatedChildren) = child_pid;
             //increment activatedChildren to keep track of how many children spawned
             activatedChildren++;
+            randTime = getNextProcessSpawnTime(currentTime);
         }
         // check for terminated/get update for active children
 //        activeChildren = checkForTerminatedChildren(childPidArray, out_file, activatedChildren, currentTime);
@@ -171,11 +174,14 @@ int main(int argc, char **argv) {
 }
 
 
-char* shouldCreateChild(int maxForks, int activatedChildren){
+bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime){
 
+    if(((currentTime.seconds * BILLION) + currentTime.nseconds) < ((nextProcessTime.seconds * BILLION) + nextProcessTime.nseconds)){
+        return false;
+    }
     //check if maxForks reached
     if(activatedChildren >= maxForks){
-        return NULL;
+        return false;
     }
 
     return true;
@@ -341,7 +347,6 @@ int getOpenSimPid(int *simPidArray, int maxForks){
     int i;
     for(i = 0; i < maxForks; i++) {
         if (simPidArray[i] == 1) {
-            printf("open\n");
             return i;
         }
     }
@@ -349,11 +354,11 @@ int getOpenSimPid(int *simPidArray, int maxForks){
     return -1;
 }
 
-memTime getNextProcessSpawnTime(){
+memTime getNextProcessSpawnTime(memTime currentTime){
     memTime randomInterval;
     srand(time(NULL));
-    randomInterval.seconds = rand() % MAXTIMEBETWEENNEWPROCSSECS + 1;
-    randomInterval.nseconds = rand() % MAXTIMEBETWEENNEWPROCSNSECS + 1;
+    randomInterval.seconds = (rand() % MAXTIMEBETWEENNEWPROCSSECS + 1) + (currentTime.seconds);
+    randomInterval.nseconds = (rand() % MAXTIMEBETWEENNEWPROCSNSECS + 1) +(currentTime.nseconds);
     return randomInterval;
 }
 

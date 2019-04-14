@@ -18,7 +18,10 @@ int main(int argc, char **argv) {
 
     childPid = atoi(argv[1]);
     msgId = atoi(argv[2]);
+
+
     currentTime = checkSharedMemory();
+
 
     printf("Child PID: %d got msgID: %d\n", childPid, msgId);
     printf(" user: %d:%d\n", currentTime.seconds, currentTime.nseconds);
