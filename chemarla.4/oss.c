@@ -21,21 +21,21 @@ Concurrent UNIX processes and shared memory
 
 #define BILLION  1e9
 #define MILLION  1e6
-#define MAXFORKS 18
 #define MAXTIMEBETWEENNEWPROCSSECS 1
 #define MAXTIMEBETWEENNEWPROCSNSECS 500000000
 
 
 FILE* out_file;
 
-int startSharedMemory(memTime currentTime, pcbStruct *pcbStructPtr);
+int startSharedMemory();
 memTime incrementSharedMemory(int value);
 char* shouldCreateChild(int maxForks, int activatedChildren);
 pid_t forkChild(int simPid, int msgId, int simPidArray[]);
 int getOpenSimPid(int *simPidArray, int maxForks);
 bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime);
 //static void interruptHandler();
-memTime spawnRandomIntervalProcess();
+memTime getNextProcessSpawnTime();
+pcbStruct getPCB(memTime currentTime, int simPid);
 
 
 
@@ -46,7 +46,8 @@ int main(int argc, char **argv) {
     opterr = 0;
     int status = 0, i, msgID;
     int incrementValue = 10000;
-    pcbStruct *pcbStructPtr;
+//    pcbStruct pcbStructPtr;
+    pcbStruct pcbStructTable[18];
     int openPid;
 
     pid_t child_pid, wait_pid;
@@ -83,7 +84,7 @@ int main(int argc, char **argv) {
 
                 if(maxForks > 18){
                     printf("Max processes argument cannot be over 18. Default of 18 is set.");
-                    maxForks = MAXFORKS;
+                    maxForks = 18;
                 }
                 break;
 
@@ -111,9 +112,9 @@ int main(int argc, char **argv) {
     int activatedChildren = 0;
     memTime currentTime;
     //get msgid from starting shared memory segment
-    msgID = startSharedMemory(currentTime, pcbStructPtr);
+    msgID = startSharedMemory();
     printf("MSGID ARG is %d\n", msgID);
-    memTime randTime = spawnRandomIntervalProcess();
+    memTime randTime = getNextProcessSpawnTime();
     //Signal
 //    signal(SIGALRM, interruptHandler);
 //    signal(SIGINT, interruptHandler);//ctrl-c interrupt
@@ -133,6 +134,11 @@ int main(int argc, char **argv) {
                 printf("Something happened\n");
                 exit(-1);
             }
+            pcbStructTable[openPid] = getPCB(currentTime, openPid);
+//            *(pcbStructPtr + openPid) = getPCB(currentTime, openPid);
+            printf("pcb priority %d and simpid %d\n", pcbStructTable[simulatedPidArray].priority, pcbStructTable[openPid].simPid);
+//            printf("pcb priority %d and simpid %d\n", *(pcbStructPtr + openPid)->priority, *(pcbStructPtr + openPid)->simPid);
+
             child_pid = forkChild(openPid, msgID, simulatedPidArray);
             printf("Child[%d] started at time %d s:%d ns\n", child_pid, currentTime.seconds, currentTime.nseconds);
             //add spawned child pid to childPidArray
@@ -233,8 +239,9 @@ pid_t forkChild(int simPid, int msgId, int simPidArray[]){
     return child_pid;
 }
 //memory allocation for clock, pcbtable, and message queue
-int startSharedMemory(memTime currentTime, pcbStruct *pcbStructPtr){
-    memTime *sharedClockPtr;
+int startSharedMemory(){
+//    memTime *sharedClockPtr;
+//    pcbStruct *pcbStructTable;
     //store clock id from shmget
     clockShmId = shmget(clockKey, sizeof(memTime), IPC_CREAT | 0666);
     if (clockShmId < 0) {
@@ -260,9 +267,9 @@ int startSharedMemory(memTime currentTime, pcbStruct *pcbStructPtr){
         perror("./oss: pcbShmId error: ");
         exit(1);
     }
-    pcbStructPtr = shmat(pcbShmId, NULL, 0);
-    if (pcbStructPtr == -1) {
-        perror("./oss: pcbStructPtr error: ");
+    pcbStructTable = shmat(pcbShmId, NULL, 0);
+    if (pcbStructTable == -1) {
+        perror("./oss: pcbStructTable error: ");
         exit(1);
     }
     //message Queue shared memory allocation (GfG)
@@ -341,12 +348,32 @@ int getOpenSimPid(int *simPidArray, int maxForks){
     return -1;
 }
 
-memTime spawnRandomIntervalProcess(){
+memTime getNextProcessSpawnTime(){
     memTime randomInterval;
     srand(time(NULL));
     randomInterval.seconds = rand() % MAXTIMEBETWEENNEWPROCSSECS + 1;
     randomInterval.nseconds = rand() % MAXTIMEBETWEENNEWPROCSNSECS + 1;
-    printf("random seconds: %d\n", randomInterval.seconds);
-    printf("random nseconds: %d\n", randomInterval.nseconds);
     return randomInterval;
+}
+
+pcbStruct getPCB(memTime currentTime, int simPid){
+    pcbStruct pcb;
+    int priority;
+    pcb.totalCpuTime.nseconds = 0;
+    pcb.totalCpuTime.seconds = 0;
+    pcb.totalTimeInSystem.nseconds = 0;
+    pcb.totalTimeInSystem.seconds = 0;
+    pcb.elapsedBurstTime.nseconds = 0;
+    pcb.elapsedBurstTime.seconds = 0;
+    pcb.simPid = simPid;
+
+    priority = rand() % 100;
+    if(priority == 0){
+        //real time class
+        pcb.priority = 0;
+    }else {
+        //user process class
+        pcb.priority = 1;
+    }
+    return pcb;
 }
