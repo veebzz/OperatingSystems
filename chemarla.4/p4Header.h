@@ -10,7 +10,9 @@ key_t pcbKey = 102938;
 key_t msgKey = 291038;
 int clockShmId;
 int pcbShmId;
+int msgId;
 
+void clearSharedMemory();
 
 typedef struct memTime{
     unsigned int seconds;
@@ -32,6 +34,13 @@ struct sharedResources{
 
 typedef struct msgQ{
     long msgType;
-    char msgText[100];
-} message;
+    int timeSlice;
+}message;
+
+
+void clearSharedMemory(){
+    shmctl(clockShmId, IPC_RMID, NULL);
+    shmctl(pcbShmId, IPC_RMID, NULL);
+    msgctl(msgId, IPC_RMID, NULL);
+}
 #endif //OPERATINGSYSTEMSP4_P4HEADER_H

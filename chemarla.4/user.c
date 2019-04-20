@@ -8,23 +8,29 @@
 
 #define BILLION  1e9
 memTime checkSharedMemory();
+message recieveMessage();
 
-int main(int argc, char **argv) {
-
+int main(int argc, char **argv){
     int* sharedInt;
     char* outputFileName;
     memTime currentTime;
     int childPid, msgId;
+    message msg;
 
     childPid = atoi(argv[1]);
     msgId = atoi(argv[2]);
 
 
     currentTime = checkSharedMemory();
+    msg = recieveMessage();
+
+    printf("[%d]user: %d:%d\n", getpid(), currentTime.seconds, currentTime.nseconds);
+    printf("[%d] received message: %d\n", msg.msgType, msg.timeSlice);
 
 
-    printf("Child PID: %d got msgID: %d\n", childPid, msgId);
-    printf(" user: %d:%d\n", currentTime.seconds, currentTime.nseconds);
+    sleep(10);
+
+
 
 
     exit(0);
@@ -39,11 +45,13 @@ memTime checkSharedMemory(){
 
     if (shmid < 0) {
         perror("\n./user: shmid error: ");
+        clearSharedMemory();
         exit(-1);
     }
     sharedInt = shmat(shmid, NULL, 0);      //assign shared memory to sharedInt pointer
     if (*sharedInt == -1) {
         perror("./user: shmat error: ");
+        clearSharedMemory();
         exit(-1);
     }
 
@@ -66,4 +74,24 @@ memTime checkSharedMemory(){
 
     return currentTime;
 
+}
+
+message recieveMessage(){
+    message msg;
+    int msgId = msgget(msgKey, 0666 | IPC_CREAT);
+    if (msgId < 0) {
+        perror("./user: msgget error: ");
+        clearSharedMemory();
+
+        exit(1);
+    }
+
+    if (msgrcv(msgId, &msg, sizeof(long), 0, 0) == -1) {
+        perror("./user: msgrcv error");
+        clearSharedMemory();
+
+        exit(1);
+    }
+
+    return msg;
 }
