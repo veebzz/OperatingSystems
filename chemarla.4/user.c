@@ -8,30 +8,24 @@
 
 #define BILLION  1e9
 memTime checkSharedMemory();
-message recieveMessage();
+message recieveMessage(int simPid);
 
 int main(int argc, char **argv){
     int* sharedInt;
     char* outputFileName;
     memTime currentTime;
-    int childPid, msgId;
+    int simPid, msgId;
     message msg;
 
-    childPid = atoi(argv[1]);
+    simPid = atoi(argv[1]);
     msgId = atoi(argv[2]);
 
 
     currentTime = checkSharedMemory();
-    msg = recieveMessage();
+    msg = recieveMessage(simPid);
 
     printf("[%d]user: %d:%d\n", getpid(), currentTime.seconds, currentTime.nseconds);
     printf("[%d] received message: %d\n", msg.msgType, msg.timeSlice);
-
-
-    sleep(10);
-
-
-
 
     exit(0);
 }
@@ -76,21 +70,21 @@ memTime checkSharedMemory(){
 
 }
 
-message recieveMessage(){
+message recieveMessage(int simPid){
     message msg;
     int msgId = msgget(msgKey, 0666 | IPC_CREAT);
     if (msgId < 0) {
         perror("./user: msgget error: ");
         clearSharedMemory();
 
-        exit(1);
+        exit(-1);
     }
 
-    if (msgrcv(msgId, &msg, sizeof(long), 0, 0) == -1) {
+    if (msgrcv(msgId, &msg, sizeof(msg.timeSlice), (simPid + 1) , 0) < -1) {
         perror("./user: msgrcv error");
         clearSharedMemory();
 
-        exit(1);
+        exit(-1);
     }
 
     return msg;

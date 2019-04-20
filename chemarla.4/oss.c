@@ -34,7 +34,7 @@ memTime incrementSharedMemory(int value);
 bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int *simPidArray);
 pid_t forkChild(int simPid, int msgId, int simPidArray[]);
 int getOpenSimPid(int *simPidArray, int maxForks);
-bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime, int active);
+bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime, int active, qStruct *roundRobinQueue, qStruct *MLFQueue);
 int dispatchMessage(int simPid, int priority, memTime currentTime, int);
 int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime);
 static void interruptHandler();
@@ -128,9 +128,9 @@ int main(int argc, char **argv) {
     qStruct *MLFQueue = createQueue(maxForks);
 
     //Signal
-//    signal(SIGALRM, interruptHandler);
+    signal(SIGALRM, interruptHandler);
     signal(SIGINT, interruptHandler);//ctrl-c interrupt
-//    alarm(2);
+    alarm(100);
 
     //oss parent control
     while (true) {
@@ -163,7 +163,7 @@ int main(int argc, char **argv) {
             randTime = getNextProcessSpawnTime(currentTime);
         }
         //If child should not be spawn then there should be processes in queues
-        if(!isEmpty(roundRobinQueue)){
+        else if(!isEmpty(roundRobinQueue)){
             //dequeue a process to run
             RRSimPid = dequeue(roundRobinQueue);
             printf("return simpid: %d\n", RRSimPid);
@@ -172,30 +172,24 @@ int main(int argc, char **argv) {
             printf("Dequeued [%d] from RoundRobinQueue with priority %d", RRSimPid, RRPriority);
             //send message
             dispatchMessage(RRSimPid, RRPriority, currentTime, msgId);
-//
-//            if (msgctl(msgId, IPC_RMID, NULL) == -1) {
-//                perror("msgctl");
-//                exit(1);
-//            }
+
+
         }else if(!isEmpty(MLFQueue)){
             MLFSimPid = dequeue(MLFQueue);
             MLFPriority = pcbStructTable[MLFSimPid].priority;
             printf("return simpid: %d\n", MLFSimPid);
 
-            printf("Dequeued [%d] from MLFQueue with priority %d\n", RRSimPid, RRPriority);
+            printf("Dequeued [%d] from MLFQueue with priority %d\n", MLFSimPid, MLFPriority);
             //send message
-            dispatchMessage(RRSimPid, RRPriority, currentTime, msgId);
-//            if (msgctl(msgId, IPC_RMID, NULL) == -1) {
-//                perror("msgctl");
-//                exit(1);
-//            }
+            dispatchMessage(MLFSimPid, MLFPriority, currentTime, msgId);
 
         }
         // check for terminated/get update for active children
         activeChildren = checkForTerminatedChildren(childPidArray, activatedChildren, currentTime);
-        printf("ACTIVE CHILDREN: %d", activeChildren);
 
-        if (shouldExit(simulatedPidArray, activatedChildren, maxForks, currentTime, activeChildren)) {
+
+
+        if (shouldExit(simulatedPidArray, activatedChildren, maxForks, currentTime, activeChildren, roundRobinQueue, MLFQueue)) {
             printf("Exit condition met\n");
             break;
         }
@@ -203,7 +197,6 @@ int main(int argc, char **argv) {
     }
 
     // release shared memory and file
-    sleep(5);
     shmctl(clockShmId, IPC_RMID, NULL);
     shmctl(pcbShmId, IPC_RMID, NULL);
     msgctl(msgId, IPC_RMID, NULL);
@@ -270,13 +263,16 @@ int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime)
     return active;
 }
 
-bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime, int active) {
-//    if (activated == 5) {
-//        return true;
-//    }
+bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime, int active, qStruct *roundRobinQueue, qStruct *MLFQueue) {
+
     if(active > 0){
         return false;
     }
+
+    if(activated > 100){
+        return true;
+    }
+
 
     //if maxforks have not reach end yet
     if (activated < maxForks) {
@@ -404,21 +400,18 @@ int dispatchMessage(int simPid, int priority, memTime currentTime, int msgId) {
     double result;
     //create message with unique type(id), and its timeslice based on priority
 
-    msg.msgType = simPid;
+    msg.msgType = simPid + 1;
     result = BASETIMEQUANTUM * pow(2.0, priority);
     msg.timeSlice = result;
     printf("[%d] sent message: %d\n", msg.msgType, msg.timeSlice);
     //send the message
-    if (msgsnd(msgId, &msg, sizeof(long), 0) < 0) {
-        perror("./oss: msgsnd error:\n");
+    if (msgsnd(msgId, &msg, sizeof(msg.timeSlice), 0) < 0) {
+        perror("./oss: msgsnd error:");
         msgctl(msgId, IPC_RMID, NULL);
         clearSharedMemory();
         exit(-1);
     }
-//    if (msgctl(msgId, IPC_RMID, NULL) == -1) {
-//        perror("./oss: msgctl error: msgctl failed to remove message\n");
-//        exit(-1);
-//    }
+
     return 0;
 
 }
