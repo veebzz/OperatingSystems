@@ -1,0 +1,37 @@
+CS 4760 Assignment #5
+
+
+--Usage--
+
+Within the project directory use make to compile the source files.
+
+make
+
+The program will create an executable files called "master" and "palin" . To execute the executable, refer to the example below.
+
+
+./master  -h   #Will display all possible options and their descriptions
+
+
+If the arguments are missing or partially missing. The program will automatically use the default input file name "input.txt".
+The command above will provide more defaults on the other executable options.
+
+--Clean--
+
+The makefile also includes a clean function which removes the executable, object files, and the 2 output files[palin.out, nopalin.out].
+
+
+make clean
+
+
+--Version Log--
+
+Github was used as version control for this assignment. The link to this assignments version control is (https://github.com/veebzz/OperatingSystems/commits/master).
+
+--Existing Problems--
+
+-The program for whatever reason will no print out the first few number of pid into the output files.(Might just be a problem on local IDE(jetbrains))
+-Im not sure if i understood the P3 assignment, regarding the for loop. If the P3 assignment asked for each string to be printed
+    5 times to see if the semaphore is working, then that is what I did.
+-Not sure how the shared memory is keeping multiple spaces or newline characters, I gave up and put a constant to asssess if its a palindrome.
+-While testing and messing with project if the program did not asses if palindrome, it would output to a file marked ?.
