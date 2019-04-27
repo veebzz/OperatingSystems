@@ -4,38 +4,52 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
-#include "p4Header.h"
+#include <semaphore.h>
+#include <fcntl.h>
+#include "p5Header.h"
 
 #define BILLION  1e9
-memTime checkSharedMemory();
+memTime checkSharedMemory(sem_t* sem);
 message recieveMessage(int simPid);
 
 int main(int argc, char **argv){
     int* sharedInt;
     char* outputFileName;
     memTime currentTime;
-    int simPid, msgId;
-    message msg;
+    int simPid;
+    const char *semName = "/sem_Chem";
+    sem_t* sem;
+
 
     simPid = atoi(argv[1]);
-    msgId = atoi(argv[2]);
+//    msgId = atoi(argv[2]);
 
+    sem = sem_open(semName, O_CREAT, 0666, 1);
+    if(sem == SEM_FAILED){
+        perror("./master: sem_open error: ");
+        exit(-1);
+    }
 
-    currentTime = checkSharedMemory();
-    msg = recieveMessage(simPid);
-
-    printf("[%d]user: %d:%d\n", getpid(), currentTime.seconds, currentTime.nseconds);
-    printf("[%d] received message: %d\n", msg.msgType, msg.timeSlice);
+    currentTime = checkSharedMemory(sem);
+    printf("[%d] accessed clock at %d:%d\n", simPid, currentTime.seconds, currentTime.nseconds);
+    //release
+    sem_post(sem);
 
     exit(0);
 }
 
-memTime checkSharedMemory(){
+memTime checkSharedMemory(sem_t* sem){
     int* sharedInt;
     memTime currentTime;
     unsigned int nextNano;
     unsigned int nextSeconds;
-    int shmid = shmget(clockKey, sizeof(memTime), IPC_CREAT | 0666); /* return value from shmget() */
+
+
+    //wait here to access time
+    sem_wait(sem);
+    sleep(2);
+
+    int shmid = shmget(clockKey, 2 *sizeof(unsigned int), IPC_CREAT | 0666); /* return value from shmget() */
 
     if (shmid < 0) {
         perror("\n./user: shmid error: ");

@@ -1,5 +1,5 @@
 C = gcc
-CFLAGS = -Wall -g -w -std=c11 -lm
+CFLAGS = -Wall -g -w -std=c11 -lm -lpthread -lrt
 TARGET1 = oss
 OBJ1 = oss.c
 TARGET2 = user

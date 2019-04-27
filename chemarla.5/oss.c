@@ -1,10 +1,10 @@
 /*
 Name: Vibhav Chemarla
-Date: 1/27/2019
-CS4760 OS Project 2
-Concurrent UNIX processes and shared memory
-*/
-
+Date: 4/23/2019
+CS4760 OS Project
+Resource Management
+ */
+//
 
 #include <stdio.h>
 #include <unistd.h>
@@ -17,7 +17,9 @@ Concurrent UNIX processes and shared memory
 #include <sys/shm.h>
 #include <stdbool.h>
 #include <math.h>
-#include "p4Header.h"
+#include "p5Header.h"
+#include <semaphore.h>
+#include <fcntl.h>
 #include "oss.h"
 
 #define BILLION  1e9
@@ -31,10 +33,10 @@ FILE *out_file;
 
 int startSharedMemory();
 memTime incrementSharedMemory(int value);
-bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int *simPidArray);
-pid_t forkChild(int simPid, int msgId, int simPidArray[]);
+bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int simPidArray[]);
+pid_t forkChild(int simPid);
 int getOpenSimPid(int *simPidArray, int maxForks);
-bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime, int active, qStruct *roundRobinQueue, qStruct *MLFQueue);
+bool shouldExit(int activated, int maxForks, memTime currentTime, int active);
 int dispatchMessage(int simPid, int priority, memTime currentTime, int);
 int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime);
 static void interruptHandler();
@@ -49,12 +51,10 @@ int main(int argc, char **argv) {
     opterr = 0;
     int status = 0, i;
     int incrementValue = 10000;
-    pcbStruct pcbStructTable[18];
     int openPid;
-    int RRSimPid; //return simPid stored as item in queue
-    int RRPriority;
-    int MLFSimPid;
-    int MLFPriority;
+    const char* semName = "/sem_Chem";
+    sem_t *sem;
+
 
     pid_t child_pid, wait_pid;
     //check if arguments are given
@@ -110,22 +110,28 @@ int main(int argc, char **argv) {
         return 1;
     }
     int *childPidArray = malloc(maxForks * sizeof(int));
-    int simulatedPidArray[maxForks];
+    int simPidArray[maxForks];
     for (i = 0; i < maxForks; i++) {
         //set all elements to 1 to indicate availability
-        simulatedPidArray[i] = 1;
+        simPidArray[i] = 1;
     }
     int activatedChildren = 0;
     memTime currentTime;
     //get msgid from starting shared memory segment
     msgId = startSharedMemory();
+    //create named semaphore
+    sem = sem_open(semName, O_CREAT, 0666, 1);
+    if(sem == SEM_FAILED){
+        perror("./master: sem_open error: ");
+        exit(-1);
+    }
     //create randTime  for random process spawn
     memTime randTime;
     randTime.seconds = 0;
     randTime.nseconds = 0;
-    //creating queues
-    qStruct *roundRobinQueue = createQueue(maxForks);
-    qStruct *MLFQueue = createQueue(maxForks);
+//    //creating queues
+//    qStruct *roundRobinQueue = createQueue(maxForks);
+//    qStruct *MLFQueue = createQueue(maxForks);
 
     //Signal
     signal(SIGALRM, interruptHandler);
@@ -137,59 +143,32 @@ int main(int argc, char **argv) {
         //increment time
         currentTime = incrementSharedMemory(incrementValue);
         //check if a child should be spawned
-        if (shouldCreateChild(maxForks, activatedChildren, currentTime, randTime, simulatedPidArray)) {
-            //spawn child
-            openPid = getOpenSimPid(simulatedPidArray, maxForks);
-            simulatedPidArray[openPid] = 0;
-            //create process control block for child
-            pcbStructTable[openPid] = getPCB(currentTime, openPid);
-            printf("pcb priority %d and simpid %d\n", pcbStructTable[openPid].priority, pcbStructTable[openPid].simPid);
-            //put into queue based on priority (0-round robin, 1 - multilevel feedback)
-            if (pcbStructTable[openPid].priority == 0) {
-                //highest level priority
-                printf("Inserting [%d] into RRQ\n", openPid);
-                enqueue(roundRobinQueue, openPid);
-            } else if (pcbStructTable[openPid].priority == 1){
-                //lower priorities
-                printf("Inserting [%d] into MLFQ\n", openPid);
-                enqueue(MLFQueue, openPid);
-            }
-            child_pid = forkChild(openPid, msgId, simulatedPidArray);
-            printf("Child[%d] started at time %d s:%d ns\n", child_pid, currentTime.seconds, currentTime.nseconds);
+        if (shouldCreateChild(maxForks, activatedChildren, currentTime, randTime, simPidArray)) {
+            //get open an open pid
+            openPid = getOpenSimPid(simPidArray, maxForks);
+            simPidArray[openPid] = 0;
+
+            //fork a child
+            child_pid = forkChild(openPid);
+//            printf("Child[%d] started at time %d s:%d ns\n", child_pid, currentTime.seconds, currentTime.nseconds);
             //add spawned child pid to childPidArray
             *(childPidArray + activatedChildren) = child_pid;
             //increment activatedChildren to keep track of how many children spawned
             activatedChildren++;
             randTime = getNextProcessSpawnTime(currentTime);
         }
-        //If child should not be spawn then there should be processes in queues
-        else if(!isEmpty(roundRobinQueue)){
-            //dequeue a process to run
-            RRSimPid = dequeue(roundRobinQueue);
-            printf("return simpid: %d\n", RRSimPid);
-            RRPriority = pcbStructTable[RRSimPid].priority;
 
-            printf("Dequeued [%d] from RoundRobinQueue with priority %d", RRSimPid, RRPriority);
-            //send message
-            dispatchMessage(RRSimPid, RRPriority, currentTime, msgId);
-
-
-        }else if(!isEmpty(MLFQueue)){
-            MLFSimPid = dequeue(MLFQueue);
-            MLFPriority = pcbStructTable[MLFSimPid].priority;
-            printf("return simpid: %d\n", MLFSimPid);
-
-            printf("Dequeued [%d] from MLFQueue with priority %d\n", MLFSimPid, MLFPriority);
-            //send message
-            dispatchMessage(MLFSimPid, MLFPriority, currentTime, msgId);
-
-        }
         // check for terminated/get update for active children
         activeChildren = checkForTerminatedChildren(childPidArray, activatedChildren, currentTime);
 
 
 
-        if (shouldExit(simulatedPidArray, activatedChildren, maxForks, currentTime, activeChildren, roundRobinQueue, MLFQueue)) {
+        if (shouldExit(activatedChildren, maxForks, currentTime, activeChildren)) {
+            sem_close(sem);
+            if(sem_unlink(semName) == -1){
+                perror("./master: sem_unlink error: ");
+                exit(-1);
+            }
             printf("Exit condition met\n");
             break;
         }
@@ -198,7 +177,6 @@ int main(int argc, char **argv) {
 
     // release shared memory and file
     shmctl(clockShmId, IPC_RMID, NULL);
-    shmctl(pcbShmId, IPC_RMID, NULL);
     msgctl(msgId, IPC_RMID, NULL);
     fclose(out_file);
     free(childPidArray);
@@ -208,7 +186,7 @@ int main(int argc, char **argv) {
 }
 
 
-bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int *simPidArray) {
+bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int simPidArray[]) {
 
     int i, isOpen;
 
@@ -224,7 +202,6 @@ bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime,
         return false;
     }
 
-
     if (((currentTime.seconds * BILLION) + currentTime.nseconds) <
         ((nextProcessTime.seconds * BILLION) + nextProcessTime.nseconds)) {
         return false;
@@ -235,7 +212,6 @@ bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime,
     }
 
     return true;
-
 }
 
 int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime) {
@@ -263,13 +239,12 @@ int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime)
     return active;
 }
 
-bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentTime, int active, qStruct *roundRobinQueue, qStruct *MLFQueue) {
-
+bool shouldExit(int activated, int maxForks, memTime currentTime, int active) {
     if(active > 0){
         return false;
     }
 
-    if(activated > 100){
+    if(activated > 20){
         return true;
     }
 
@@ -282,13 +257,13 @@ bool shouldExit(int simPidArray[], int activated, int maxForks, memTime currentT
     return true;
 }
 
-pid_t forkChild(int simPid, int msgId, int simPidArray[]) {
+pid_t forkChild(int simPid) {
     printf("in forkChild\n");
     pid_t child_pid = fork();
     char simPidStr[10], msgIdStr[10];
     //turn simulated pid, and message ID into strings
     sprintf(simPidStr, "%d", simPid);
-    sprintf(msgIdStr, "%d", msgId);
+//    sprintf(msgIdStr, "%d", msgId);
     //fork fail check
     if (child_pid < 0) {
         perror("./oss : forkError");
@@ -298,7 +273,7 @@ pid_t forkChild(int simPid, int msgId, int simPidArray[]) {
     } else if (child_pid == 0) {
         //i am child
         //exec arguments
-        char *arguments[4] = {"./user", simPidStr, msgIdStr, NULL};
+        char *arguments[3] = {"./user", simPidStr, NULL};
         execvp("./user", arguments);
         exit(0);
     }
@@ -309,7 +284,7 @@ pid_t forkChild(int simPid, int msgId, int simPidArray[]) {
 int startSharedMemory(memTime *sharedClockPtr, pcbStruct *pcbStructTable) {
 
     //store clock id from shmget
-    clockShmId = shmget(clockKey, sizeof(memTime), IPC_CREAT | 0666);
+    clockShmId = shmget(clockKey, 2* sizeof(unsigned int), IPC_CREAT | 0666);
     if (clockShmId < 0) {
         perror("./oss: clockShmId error: ");
         clearSharedMemory();
@@ -328,20 +303,6 @@ int startSharedMemory(memTime *sharedClockPtr, pcbStruct *pcbStructTable) {
     (*sharedClockPtr).nseconds = 0;
     //detach
     shmdt(sharedClockPtr);
-    // same allocation for pcb shared mem
-
-    pcbShmId = shmget(pcbKey, sizeof(pcbStruct), IPC_CREAT | 0666);
-    if (pcbShmId < 0) {
-        perror("./oss: pcbShmId error: ");
-        clearSharedMemory();
-        exit(1);
-    }
-    pcbStructTable = shmat(pcbShmId, NULL, 0);
-    if (pcbStructTable == -1) {
-        perror("./oss: pcbStructTable error: ");
-        clearSharedMemory();
-        exit(1);
-    }
     //message Queue shared memory allocation (GfG)
     int msgId = msgget(msgKey, 0666 | IPC_CREAT);
     if (msgId < 0) {
@@ -424,9 +385,10 @@ static void interruptHandler(){
     int pcbId = shmget(pcbKey, sizeof(pcbStruct), IPC_CREAT | 0666);
     int msgId = msgget(msgKey, 0666 | IPC_CREAT);
     fclose(out_file);
+    const char * semName = "/sem_Chem";
+    sem_unlink(semName);
 
     shmctl(clockId, IPC_RMID, NULL); //delete shared memory
-    shmctl(pcbId, IPC_RMID, NULL);
     msgctl(msgId, IPC_RMID, NULL);
     kill(0, SIGKILL); // kill child process
     exit(0);
