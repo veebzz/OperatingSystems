@@ -2,9 +2,18 @@
 #ifndef OPERATINGSYSTEMSP5_MSG_H
 #define OPERATINGSYSTEMSP5_MSG_H
 
-typdef struct mesg_buffer {
-    long mesg_type;
-    char mesg_text[100];
+void sendMessage(key_t key, msgStruct message);
+key_t createMsgKey(int simPid);
+msgStruct recieveMessage(key_t key);
+
+
+
+
+typedef struct msgStruct {
+    long type;
+    int resourceId;
+    int userProcessId;
+    char text[100];
 }msgStruct;
 
 key_t createMsgKey(int simPid){

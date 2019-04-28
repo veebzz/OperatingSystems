@@ -4,6 +4,7 @@
 #include <sys/ipc.h>
 #include <stdbool.h>
 #include <sys/msg.h>
+#include <semaphore.h>
 
 #define NUM_USER_PROCESSES 18
 //globals
