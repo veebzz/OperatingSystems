@@ -7,6 +7,7 @@
 #include <semaphore.h>
 #include <fcntl.h>
 #include "p5Header.h"
+#include "msg.h"
 
 #define BILLION  1e9
 memTime checkSharedMemory(sem_t* sem);
@@ -19,11 +20,17 @@ int main(int argc, char **argv){
     int simPid;
     const char *semName = "/sem_Chem";
     sem_t* sem;
+    long boundTime;
+
 
 
     simPid = atoi(argv[1]);
-//    msgId = atoi(argv[2]);
+    boundTime = atoi(argv[2]);
 
+    printf("bound time :%ld\n", boundTime);
+
+
+    //CLOCK SEMAPHORE
     sem = sem_open(semName, O_CREAT, 0666, 1);
     if(sem == SEM_FAILED){
         perror("./master: sem_open error: ");
@@ -47,7 +54,6 @@ memTime checkSharedMemory(sem_t* sem){
 
     //wait here to access time
     sem_wait(sem);
-    sleep(2);
 
     int shmid = shmget(clockKey, 2 *sizeof(unsigned int), IPC_CREAT | 0666); /* return value from shmget() */
 
@@ -84,22 +90,3 @@ memTime checkSharedMemory(sem_t* sem){
 
 }
 
-message recieveMessage(int simPid){
-    message msg;
-    int msgId = msgget(msgKey, 0666 | IPC_CREAT);
-    if (msgId < 0) {
-        perror("./user: msgget error: ");
-        clearSharedMemory();
-
-        exit(-1);
-    }
-
-    if (msgrcv(msgId, &msg, sizeof(msg.timeSlice), (simPid + 1) , 0) < -1) {
-        perror("./user: msgrcv error");
-        clearSharedMemory();
-
-        exit(-1);
-    }
-
-    return msg;
-}

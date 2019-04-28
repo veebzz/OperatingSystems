@@ -12,15 +12,13 @@ Resource Management
 #include <getopt.h>
 #include <string.h>
 #include <sys/wait.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
 #include <sys/shm.h>
-#include <stdbool.h>
 #include <math.h>
 #include "p5Header.h"
 #include <semaphore.h>
 #include <fcntl.h>
 #include "oss.h"
+#include "msg.h"
 
 #define BILLION  1e9
 #define MILLION  1e6
@@ -31,7 +29,7 @@ Resource Management
 
 FILE *out_file;
 
-int startSharedMemory();
+void startSharedMemory();
 memTime incrementSharedMemory(int value);
 bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int simPidArray[]);
 pid_t forkChild(int simPid);
@@ -41,7 +39,6 @@ int dispatchMessage(int simPid, int priority, memTime currentTime, int);
 int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime);
 static void interruptHandler();
 memTime getNextProcessSpawnTime(memTime currentTime);
-pcbStruct getPCB(memTime currentTime, int simPid);
 memTime *sharedClockPtr;
 
 
@@ -117,14 +114,16 @@ int main(int argc, char **argv) {
     }
     int activatedChildren = 0;
     memTime currentTime;
-    //get msgid from starting shared memory segment
-    msgId = startSharedMemory();
+    //start shared memory for clock and resource descriptor
+    startSharedMemory();
     //create named semaphore
     sem = sem_open(semName, O_CREAT, 0666, 1);
     if(sem == SEM_FAILED){
         perror("./master: sem_open error: ");
         exit(-1);
     }
+    resourceDescriptor* resDescriptorPointer = initResourceDescriptor();
+
     //create randTime  for random process spawn
     memTime randTime;
     randTime.seconds = 0;
@@ -161,7 +160,9 @@ int main(int argc, char **argv) {
         // check for terminated/get update for active children
         activeChildren = checkForTerminatedChildren(childPidArray, activatedChildren, currentTime);
 
-
+        if(deadLockFound()) {
+            // todo:
+        }
 
         if (shouldExit(activatedChildren, maxForks, currentTime, activeChildren)) {
             sem_close(sem);
@@ -177,7 +178,7 @@ int main(int argc, char **argv) {
 
     // release shared memory and file
     shmctl(clockShmId, IPC_RMID, NULL);
-    msgctl(msgId, IPC_RMID, NULL);
+    shmctl(resId, IPC_RMID, NULL);
     fclose(out_file);
     free(childPidArray);
     printf("Parent[%d] Finished\n", getpid());
@@ -185,6 +186,24 @@ int main(int argc, char **argv) {
 
 }
 
+sem_t* createSem(char* name){
+    sem_t* sem;
+    sem = sem_open(name, O_CREAT, 0666, 1);
+    if(sem == SEM_FAILED){
+        perror("./master: createSem error: ");
+        exit(-1);
+    }
+    return sem;
+}
+
+key_t createMsgId(int simPid){
+    key_t key;
+    int msgId;
+
+    key = ftok("user", simPid);
+    msgId = msget(key, IPC_CREAT | 0666);
+
+}
 
 bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int simPidArray[]) {
 
@@ -258,12 +277,11 @@ bool shouldExit(int activated, int maxForks, memTime currentTime, int active) {
 }
 
 pid_t forkChild(int simPid) {
-    printf("in forkChild\n");
     pid_t child_pid = fork();
-    char simPidStr[10], msgIdStr[10];
+    char simPidStr[10], timeStr[10];
     //turn simulated pid, and message ID into strings
     sprintf(simPidStr, "%d", simPid);
-//    sprintf(msgIdStr, "%d", msgId);
+    sprintf(timeStr, "%d", rand()% 500001);
     //fork fail check
     if (child_pid < 0) {
         perror("./oss : forkError");
@@ -273,15 +291,15 @@ pid_t forkChild(int simPid) {
     } else if (child_pid == 0) {
         //i am child
         //exec arguments
-        char *arguments[3] = {"./user", simPidStr, NULL};
+        char *arguments[4] = {"./user", simPidStr, timeStr, NULL};
         execvp("./user", arguments);
         exit(0);
     }
     return child_pid;
 }
 
-//memory allocation for clock, pcbtable, and message queue
-int startSharedMemory(memTime *sharedClockPtr, pcbStruct *pcbStructTable) {
+//memory allocation for clock,and
+void startSharedMemory(memTime *sharedClockPtr) {
 
     //store clock id from shmget
     clockShmId = shmget(clockKey, 2* sizeof(unsigned int), IPC_CREAT | 0666);
@@ -303,14 +321,37 @@ int startSharedMemory(memTime *sharedClockPtr, pcbStruct *pcbStructTable) {
     (*sharedClockPtr).nseconds = 0;
     //detach
     shmdt(sharedClockPtr);
-    //message Queue shared memory allocation (GfG)
-    int msgId = msgget(msgKey, 0666 | IPC_CREAT);
-    if (msgId < 0) {
-        perror("./oss: msgget error: ");
+    //Start resource descriptor shared memory
+    resId = shmget(resKey, 20* sizeof(resourceDescriptor), IPC_CREAT | 0666);
+    if (resId < 0) {
+        perror("./oss: resId error: ");
         clearSharedMemory();
         exit(1);
     }
-    return msgId;
+}
+
+resourceDescriptor* initResourceDescriptor(){
+    resourceDescriptor* rdp;
+    int i,j;
+    //attach resource descriptor memory to int pointer
+    rdp = shmat(resId, NULL, 0);
+
+    if (rdp == -1) {
+        perror("./oss: rdp error: ");
+        clearSharedMemory();
+        exit(1);
+    }
+
+    for(i = 1; i <= 20; i++){
+        *(rdp + i)->resourceId = i % 10;
+        *(rdp + i)->sem = createSem("sem_%d", i);
+
+        for (j = 0; j < NUM_USER_PROCESSES; j++){
+            *(rdp + i)->request[j] = -1;
+            *(rdp + i)->allocated[j] = -1;
+            *(rdp + i)->released[j] = -1;
+        }
+     }
 }
 
 memTime incrementSharedMemory(int value) {
@@ -378,18 +419,16 @@ int dispatchMessage(int simPid, int priority, memTime currentTime, int msgId) {
 }
 static void interruptHandler(){
     key_t clockKey = 102938;
-    key_t pcbKey = 382910;
-    key_t msgKey = 291038;
 
-    int clockId = shmget(clockKey, sizeof(memTime), IPC_CREAT | 0666);
-    int pcbId = shmget(pcbKey, sizeof(pcbStruct), IPC_CREAT | 0666);
-    int msgId = msgget(msgKey, 0666 | IPC_CREAT);
+    int clockId = shmget(clockKey, 2*sizeof(int), IPC_CREAT | 0666);
+    int resId = shmget(resKey, 20*sizeof(resourceDescriptor), IPC_CREAT | 0666);
+
     fclose(out_file);
     const char * semName = "/sem_Chem";
     sem_unlink(semName);
 
     shmctl(clockId, IPC_RMID, NULL); //delete shared memory
-    msgctl(msgId, IPC_RMID, NULL);
+    shmctl(resId, IPC_RMID, NULL);
     kill(0, SIGKILL); // kill child process
     exit(0);
 }
@@ -409,31 +448,8 @@ int getOpenSimPid(int *simPidArray, int maxForks) {
 memTime getNextProcessSpawnTime(memTime currentTime) {
     memTime randomInterval;
     srand(time(NULL));
-    randomInterval.seconds = (rand() % MAXTIMEBETWEENNEWPROCSSECS + 1) + (currentTime.seconds);
+    randomInterval.seconds =  (currentTime.seconds);
     randomInterval.nseconds = (rand() % MAXTIMEBETWEENNEWPROCSNSECS + 1) + (currentTime.nseconds);
     return randomInterval;
 }
 
-pcbStruct getPCB(memTime currentTime, int simPid) {
-    pcbStruct pcb;
-    int priority;
-    pcb.totalCpuTime.nseconds = 0;
-    pcb.totalCpuTime.seconds = 0;
-    pcb.totalTimeInSystem.nseconds = 0;
-    pcb.totalTimeInSystem.seconds = 0;
-    pcb.elapsedBurstTime.nseconds = 0;
-    pcb.elapsedBurstTime.seconds = 0;
-    pcb.simPid = simPid;
-
-    priority = rand() % 100 + 1;
-    //heavily weighted towards priority 1( only 1% chance to get real time class)
-    if (priority < 25) {
-        //real time class
-        pcb.priority = 0;
-    } else {
-        //user process class
-        pcb.priority = 1;
-    }
-
-    return pcb;
-}
