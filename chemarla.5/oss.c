@@ -40,6 +40,9 @@ int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime)
 static void interruptHandler();
 memTime getNextProcessSpawnTime(memTime currentTime);
 memTime *sharedClockPtr;
+resourceDescriptor* initResourceDescriptor();
+sem_t* createSem(int simPid);
+bool deadLockFound();
 
 
 int main(int argc, char **argv) {
@@ -170,7 +173,7 @@ int main(int argc, char **argv) {
                 perror("./master: sem_unlink error: ");
                 exit(-1);
             }
-            printf("Exit condition met\n");
+//            printf("Exit condition met\n");
             break;
         }
 
@@ -186,9 +189,12 @@ int main(int argc, char **argv) {
 
 }
 
-sem_t* createSem(char* name){
+sem_t* createSem(int simPid){
+    char simPidStr[5];
+    sprintf(simPidStr, "%d", simPid);
+
     sem_t* sem;
-    sem = sem_open(name, O_CREAT, 0666, 1);
+    sem = sem_open(simPidStr, O_CREAT, 0666, 1);
     if(sem == SEM_FAILED){
         perror("./master: createSem error: ");
         exit(-1);
@@ -201,8 +207,12 @@ key_t createMsgId(int simPid){
     int msgId;
 
     key = ftok("user", simPid);
-    msgId = msget(key, IPC_CREAT | 0666);
+    msgId = msgget(key, IPC_CREAT | 0666);
 
+}
+
+bool deadLockFound(){
+    return false;
 }
 
 bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int simPidArray[]) {
@@ -343,13 +353,13 @@ resourceDescriptor* initResourceDescriptor(){
     }
 
     for(i = 1; i <= 20; i++){
-        *(rdp + i)->resourceId = i % 10;
-        *(rdp + i)->sem = createSem("sem_%d", i);
+        rdp[i].resourceId = i % 10;
+        rdp[i].sem = createSem(i);
 
         for (j = 0; j < NUM_USER_PROCESSES; j++){
-            *(rdp + i)->request[j] = -1;
-            *(rdp + i)->allocated[j] = -1;
-            *(rdp + i)->released[j] = -1;
+            rdp[i].request[j] = -1;
+            rdp[i].allocated[j] = -1;
+            rdp[i].released[j] = -1;
         }
      }
 }

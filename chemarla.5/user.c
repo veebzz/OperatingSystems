@@ -13,9 +13,9 @@
 
 memTime checkSharedMemory(sem_t *sem);
 
-message recieveMessage(int simPid);
+//memTime getTimeElapsed(memTime startTime, memTime currentTime);
 
-memTime getTimeElapsed(memTime startTime, memTime currentTime);
+bool isElapsed(memTime currentTime, int bound);
 
 memTime getNextTime(memTime currentTime, int bound);
 
@@ -36,8 +36,6 @@ int main(int argc, char **argv) {
     int i;
     msgStruct message;
 
-    timeElapsed.nseconds = 0;
-    timeElapsed.seconds = 0;
 
     simPid = atoi(argv[1]);
     boundTime = atoi(argv[2]);
@@ -54,7 +52,7 @@ int main(int argc, char **argv) {
     startTime = currentTime;
 
     printf("[%d] accessed clock at %d:%d\n", simPid, currentTime.seconds, currentTime.nseconds);
-    long requestTick = (rand() % (boundTime + 1);
+    long requestTick = rand() % boundTime + 1;
 
     // keep track of all the resources that are held, -1 means not holding currently
     for (int i = 0; i < 10; i++) {
@@ -76,10 +74,10 @@ int main(int argc, char **argv) {
             message.resourceId = resourceId;
             message.userProcessId = simPid;
 
-            sendMessage(createMsgKey(simPid), );
+            sendMessage(createMsgKey(simPid), message);
         }
         currentTime = checkSharedMemory(sem);
-        requestTick = (rand() % (boundTime + 1);
+        requestTick = rand() % boundTime + 1;
     }
 
 
@@ -132,18 +130,18 @@ bool isElapsed(memTime currentTime, int bound) {
            (tempTime.seconds == currentTime.seconds && tempTime.nseconds > currentTime.nseconds);
 }
 
-memTime getTimeElapsed(memTime startTime, memTime currentTime) {
-    memTime tempTime;
-    tempTime.seconds = currentTime.seconds - startTime.seconds;
-    tempTime.nseconds = currentTime.nseconds - startTime.nseconds;
-
-    if (tempTime.nseconds < 0) {
-        tempTime.seconds -= 1;
-        tempTime.nseconds += BILLION;
-    }
-
-
-}
+//memTime getTimeElapsed(memTime startTime, memTime currentTime) {
+//    memTime tempTime;
+//    tempTime.seconds = currentTime.seconds - startTime.seconds;
+//    tempTime.nseconds = currentTime.nseconds - startTime.nseconds;
+//
+//    if (tempTime.nseconds < 0) {
+//        tempTime.seconds -= 1;
+//        tempTime.nseconds += BILLION;
+//    }
+//
+//
+//}
 
 memTime checkSharedMemory(sem_t *sem) {
     int *sharedInt;

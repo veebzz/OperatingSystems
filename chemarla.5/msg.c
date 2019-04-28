@@ -1,3 +1,5 @@
+#include "msg.h"
+
 key_t createMsgKey(int simPid){
     key_t key;
     int msgId;
