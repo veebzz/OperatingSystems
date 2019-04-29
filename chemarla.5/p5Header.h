@@ -6,7 +6,7 @@
 #include <sys/msg.h>
 #include <semaphore.h>
 
-#define NUM_USER_PROCESSES 18
+#define NUM_USER_PROCESSES 2
 //globals
 key_t clockKey = 382910;
 key_t pcbKey = 102938;
@@ -18,6 +18,10 @@ int resId;
 
 void clearSharedMemory();
 
+typedef struct processStruct {
+    int simPid;
+    pid_t pid;
+} processStruct;
 
 typedef struct memTime{
     unsigned int seconds;
@@ -26,8 +30,9 @@ typedef struct memTime{
 
 typedef struct resourceDescriptor{
     bool shared;
-    sem_t* sem;
     int resourceId;
+    bool inUse;
+    int currentOwner;
     int request[NUM_USER_PROCESSES];
     int allocated[NUM_USER_PROCESSES];
     int released[NUM_USER_PROCESSES];

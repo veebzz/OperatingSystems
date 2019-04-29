@@ -30,18 +30,31 @@ Resource Management
 FILE *out_file;
 
 void startSharedMemory();
+
 memTime incrementSharedMemory(int value);
-bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int simPidArray[]);
+
+bool shouldCreateChild(memTime currentTime, memTime nextProcessTime, processStruct pidArray[]);
+
 pid_t forkChild(int simPid);
-int getOpenSimPid(int *simPidArray, int maxForks);
+
+int getOpenSimPid(processStruct pidArray[]);
+
 bool shouldExit(int activated, int maxForks, memTime currentTime, int active);
+
 int dispatchMessage(int simPid, int priority, memTime currentTime, int);
-int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime);
+
+int checkForTerminatedChildren(processStruct array[]);
+
 static void interruptHandler();
+
 memTime getNextProcessSpawnTime(memTime currentTime);
+
 memTime *sharedClockPtr;
-resourceDescriptor* initResourceDescriptor();
-sem_t* createSem(int simPid);
+
+resourceDescriptor *initResourceDescriptor();
+
+sem_t *createSem(int simPid);
+
 bool deadLockFound();
 
 
@@ -50,12 +63,14 @@ int main(int argc, char **argv) {
     char *outputFileName = "log.txt";
     opterr = 0;
     int status = 0, i;
-    int incrementValue = 10000;
+    int incrementValue = 1000000;
     int openPid;
-    const char* semName = "/sem_Chem";
+    const char *semName = "/sem_Chem";
     sem_t *sem;
+    msgStruct msg;
+    msgStruct sendMsg;
 
-
+    msg.type = -1;
     pid_t child_pid, wait_pid;
     //check if arguments are given
     while ((optionIndex = getopt(argc, argv, "h:o:n:")) != -1) {
@@ -109,31 +124,28 @@ int main(int argc, char **argv) {
         perror("./oss: File Error: ");
         return 1;
     }
-    int *childPidArray = malloc(maxForks * sizeof(int));
-    int simPidArray[maxForks];
+
+    processStruct childPidArray[NUM_USER_PROCESSES];
     for (i = 0; i < maxForks; i++) {
         //set all elements to 1 to indicate availability
-        simPidArray[i] = 1;
+        childPidArray[i].simPid = 0;
     }
-    int activatedChildren = 0;
+
     memTime currentTime;
     //start shared memory for clock and resource descriptor
     startSharedMemory();
     //create named semaphore
     sem = sem_open(semName, O_CREAT, 0666, 1);
-    if(sem == SEM_FAILED){
+    if (sem == SEM_FAILED) {
         perror("./master: sem_open error: ");
         exit(-1);
     }
-    resourceDescriptor* resDescriptorPointer = initResourceDescriptor();
+    resourceDescriptor *rdp = initResourceDescriptor();
 
     //create randTime  for random process spawn
     memTime randTime;
     randTime.seconds = 0;
     randTime.nseconds = 0;
-//    //creating queues
-//    qStruct *roundRobinQueue = createQueue(maxForks);
-//    qStruct *MLFQueue = createQueue(maxForks);
 
     //Signal
     signal(SIGALRM, interruptHandler);
@@ -142,67 +154,83 @@ int main(int argc, char **argv) {
 
     //oss parent control
     while (true) {
+
         //increment time
         currentTime = incrementSharedMemory(incrementValue);
+        printf ("oss incrementing the clock %d:%ld\n", currentTime.seconds, currentTime.nseconds);
         //check if a child should be spawned
-        if (shouldCreateChild(maxForks, activatedChildren, currentTime, randTime, simPidArray)) {
+        if (shouldCreateChild(currentTime, randTime, childPidArray)) {
             //get open an open pid
-            openPid = getOpenSimPid(simPidArray, maxForks);
-            simPidArray[openPid] = 0;
+            openPid = getOpenSimPid(childPidArray);
+            childPidArray[openPid].simPid = openPid;
 
             //fork a child
             child_pid = forkChild(openPid);
-//            printf("Child[%d] started at time %d s:%d ns\n", child_pid, currentTime.seconds, currentTime.nseconds);
-            //add spawned child pid to childPidArray
-            *(childPidArray + activatedChildren) = child_pid;
-            //increment activatedChildren to keep track of how many children spawned
-            activatedChildren++;
+            childPidArray[openPid].pid = child_pid;
             randTime = getNextProcessSpawnTime(currentTime);
         }
 
-        // check for terminated/get update for active children
-        activeChildren = checkForTerminatedChildren(childPidArray, activatedChildren, currentTime);
+        //recieve user message
 
-        if(deadLockFound()) {
+        // check for terminated/get update for active children
+        checkForTerminatedChildren(childPidArray);
+
+        if (msg.type == -1) {
+            msg = recieveMessage(createMsgKey(0));
+        }
+        if (msg.type == 0) { // request
+            if (rdp[msg.resourceId].inUse){
+                // we need wait for release
+            } else {
+                rdp[msg.resourceId].inUse = true;
+                rdp[msg.resourceId].currentOwner = msg.userProcessId;
+                rdp[msg.resourceId].allocated[msg.userProcessId]++;
+
+                // send a message about grant of the resource
+                sendMsg.type = 1;
+                sendMsg.resourceId = msg.resourceId;
+                sendMessage(createMsgKey(msg.userProcessId), sendMsg);
+                msg.type = -1;
+            }
+        } else if (msg.type == 2) { // release
+            if (rdp[msg.resourceId].inUse){
+                rdp[msg.resourceId].inUse = false;
+                rdp[msg.resourceId].currentOwner = 0;
+                msg.type = -1;
+            }
+        } else if (msg.type == 3) { // user process terminated
+            for (i = 0; i < 20; i++){
+                if(rdp[i].currentOwner == msg.userProcessId){
+                    rdp[i].inUse = false;
+                    printf("OSS releasing P%d resource R%d", msg.userProcessId, i);
+                }
+            }
+            msg.type = -1;
+        }
+
+        if (deadLockFound()) {
             // todo:
         }
-
-        if (shouldExit(activatedChildren, maxForks, currentTime, activeChildren)) {
-            sem_close(sem);
-            if(sem_unlink(semName) == -1){
-                perror("./master: sem_unlink error: ");
-                exit(-1);
-            }
-//            printf("Exit condition met\n");
-            break;
-        }
-
     }
-
-    // release shared memory and file
-    shmctl(clockShmId, IPC_RMID, NULL);
-    shmctl(resId, IPC_RMID, NULL);
-    fclose(out_file);
-    free(childPidArray);
+    // close always happens from signal interrupter and release of resources.
     printf("Parent[%d] Finished\n", getpid());
     return 0;
-
 }
 
-sem_t* createSem(int simPid){
-    char simPidStr[5];
-    sprintf(simPidStr, "%d", simPid);
+sem_t *createSem(int resourceId) {
+    char resourcePidStr[5];
+    sprintf(resourcePidStr, "%d", resourceId);
 
-    sem_t* sem;
-    sem = sem_open(simPidStr, O_CREAT, 0666, 1);
-    if(sem == SEM_FAILED){
+    sem_t *sem;
+    sem = sem_open(resourcePidStr, O_CREAT, 0666, 1);
+    if (sem == SEM_FAILED) {
         perror("./master: createSem error: ");
         exit(-1);
     }
     return sem;
 }
 
-key_t createMsgId(int simPid){
+key_t createMsgId(int simPid) {
     key_t key;
     int msgId;
 
@@ -211,56 +239,43 @@ key_t createMsgId(int simPid){
 
 }
 
-bool deadLockFound(){
+bool deadLockFound() {
     return false;
 }
 
-bool shouldCreateChild(int maxForks, int activatedChildren, memTime currentTime, memTime nextProcessTime, int simPidArray[]) {
+bool shouldCreateChild(memTime currentTime, memTime nextProcessTime, processStruct pidArray[]) {
 
     int i, isOpen;
-
-    for (i = 0; i < maxForks; i++) {
-        if (simPidArray[i] == 1) {
-            isOpen = i;
-            break;
-        } else {
-            isOpen = -1;
-        }
-    }
-    if (isOpen == -1) {
-        return false;
-    }
 
     if (((currentTime.seconds * BILLION) + currentTime.nseconds) <
         ((nextProcessTime.seconds * BILLION) + nextProcessTime.nseconds)) {
         return false;
     }
-    //check if maxForks reached
-    if (activatedChildren >= maxForks) {
-        return false;
-    }
 
-    return true;
+    for (i = 0; i < NUM_USER_PROCESSES; i++) {
+        if (pidArray[i].simPid == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
-int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime) {
+int checkForTerminatedChildren(processStruct array[]) {
     int i = 0;
     int status;
     pid_t checkId;
     int active = 0;
     // check through the activated children
-    for (i = 0; i < activated; i++) {
+    for (i = 0; i < NUM_USER_PROCESSES; i++) {
         //only look at childPidArray elements with previously known active children(only elements with PID)
-        if (*(array + i) > 0) {
+        if (array[i].simPid > 0) {
             //if checkID = 0 its still running, if -1 error, if checkID = pid it is dead
-            checkId = waitpid(*(array + i), &status, WNOHANG);
+            checkId = waitpid(array[i].pid, &status, WNOHANG);
             //if it is dead, mark them as -1 to not check this anymore
-            if (checkId == *(array + i)) {
-                fprintf(out_file, "Child[%d] terminated at %d:%d\n", *(array + i), currentTime.seconds,
-                        currentTime.nseconds);
-                *(array + i) = -1;
-            } else {
-                active++;
+            if (checkId <= 0) {
+                //exit
+                array[i].pid = 0;
+                array[i].simPid = 0;
             }
         }
     }
@@ -269,11 +284,11 @@ int checkForTerminatedChildren(pid_t *array, int activated, memTime currentTime)
 }
 
 bool shouldExit(int activated, int maxForks, memTime currentTime, int active) {
-    if(active > 0){
+    if (active > 0) {
         return false;
     }
 
-    if(activated > 20){
+    if (activated > 20) {
         return true;
     }
 
@@ -291,7 +306,7 @@ pid_t forkChild(int simPid) {
     char simPidStr[10], timeStr[10];
     //turn simulated pid, and message ID into strings
     sprintf(simPidStr, "%d", simPid);
-    sprintf(timeStr, "%d", rand()% 500001);
+    sprintf(timeStr, "%d", rand() % 500001);
     //fork fail check
     if (child_pid < 0) {
         perror("./oss : forkError");
@@ -312,7 +327,7 @@ pid_t forkChild(int simPid) {
 void startSharedMemory(memTime *sharedClockPtr) {
 
     //store clock id from shmget
-    clockShmId = shmget(clockKey, 2* sizeof(unsigned int), IPC_CREAT | 0666);
+    clockShmId = shmget(clockKey, 2 * sizeof(unsigned int), IPC_CREAT | 0666);
     if (clockShmId < 0) {
         perror("./oss: clockShmId error: ");
         clearSharedMemory();
@@ -332,7 +347,7 @@ void startSharedMemory(memTime *sharedClockPtr) {
     //detach
     shmdt(sharedClockPtr);
     //Start resource descriptor shared memory
-    resId = shmget(resKey, 20* sizeof(resourceDescriptor), IPC_CREAT | 0666);
+    resId = shmget(resKey, 20 * sizeof(resourceDescriptor), IPC_CREAT | 0666);
     if (resId < 0) {
         perror("./oss: resId error: ");
         clearSharedMemory();
@@ -340,9 +355,9 @@ void startSharedMemory(memTime *sharedClockPtr) {
     }
 }
 
-resourceDescriptor* initResourceDescriptor(){
-    resourceDescriptor* rdp;
-    int i,j;
+resourceDescriptor *initResourceDescriptor() {
+    resourceDescriptor *rdp;
+    int i, j;
     //attach resource descriptor memory to int pointer
     rdp = shmat(resId, NULL, 0);
 
@@ -352,16 +367,17 @@ resourceDescriptor* initResourceDescriptor(){
         exit(1);
     }
 
-    for(i = 1; i <= 20; i++){
+    for (i = 1; i <= 20; i++) {
         rdp[i].resourceId = i % 10;
-        rdp[i].sem = createSem(i);
+        rdp[i].inUse = false;
 
-        for (j = 0; j < NUM_USER_PROCESSES; j++){
-            rdp[i].request[j] = -1;
-            rdp[i].allocated[j] = -1;
-            rdp[i].released[j] = -1;
+        for (j = 0; j < NUM_USER_PROCESSES; j++) {
+            rdp[i].request[j] = 0;
+            rdp[i].allocated[j] = 0;
+            rdp[i].released[j] = 0;
         }
-     }
+    }
+    return rdp;
 }
 
 memTime incrementSharedMemory(int value) {
@@ -427,14 +443,15 @@ int dispatchMessage(int simPid, int priority, memTime currentTime, int msgId) {
     return 0;
 
 }
-static void interruptHandler(){
+
+static void interruptHandler() {
     key_t clockKey = 102938;
 
-    int clockId = shmget(clockKey, 2*sizeof(int), IPC_CREAT | 0666);
-    int resId = shmget(resKey, 20*sizeof(resourceDescriptor), IPC_CREAT | 0666);
+    int clockId = shmget(clockKey, 2 * sizeof(int), IPC_CREAT | 0666);
+    int resId = shmget(resKey, 20 * sizeof(resourceDescriptor), IPC_CREAT | 0666);
 
     fclose(out_file);
-    const char * semName = "/sem_Chem";
+    const char *semName = "/sem_Chem";
     sem_unlink(semName);
 
     shmctl(clockId, IPC_RMID, NULL); //delete shared memory
@@ -444,21 +461,20 @@ static void interruptHandler(){
 }
 
 //get the next open simulated pid
-int getOpenSimPid(int *simPidArray, int maxForks) {
+int getOpenSimPid(processStruct pidArray[]) {
     int i;
-    for (i = 0; i < maxForks; i++) {
-        if (simPidArray[i] == 1) {
+    for (i = 0; i < NUM_USER_PROCESSES; i++) {
+        if (pidArray[i].simPid == 0) {
             return i;
         }
     }
-    printf("all taken\n");
-    return -1;
+    return 0;
 }
 
 memTime getNextProcessSpawnTime(memTime currentTime) {
     memTime randomInterval;
     srand(time(NULL));
-    randomInterval.seconds =  (currentTime.seconds);
+    randomInterval.seconds = (currentTime.seconds);
     randomInterval.nseconds = (rand() % MAXTIMEBETWEENNEWPROCSNSECS + 1) + (currentTime.nseconds);
     return randomInterval;
 }

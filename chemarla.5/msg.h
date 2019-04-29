@@ -36,9 +36,12 @@ void sendMessage(key_t key, msgStruct message){
 msgStruct recieveMessage(key_t key){
     msgStruct message;
     int msgId;
+    int recv;
     msgId = msgget(key, IPC_CREAT | 0666);
-    msgrcv(msgId, &message, sizeof(int), 1, 0);
-
+    recv = msgrcv(msgId, &message, sizeof(int), 1, IPC_NOWAIT);
+    if (recv == -1){
+        message.type = -1;
+    }
     return message;
 }
 
