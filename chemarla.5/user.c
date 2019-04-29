@@ -60,6 +60,7 @@ int main(int argc, char **argv) {
         perror("./master: sem_open error: ");
         exit(-1);
     }
+    printf("Got time semaphore ..\n");
     // get current time
     currentTime = checkSharedMemory(sem);
     startTime = currentTime;
@@ -76,7 +77,7 @@ int main(int argc, char **argv) {
         heldResources[i] = false;
     }
 
-    while (true) {
+    while (false) {
         //atleast 1 second and
         if (isElapsed(startTime, terminateTick)) {
             if (shouldTerminate()) {
@@ -100,7 +101,7 @@ int main(int argc, char **argv) {
             sendMsg.type = 0;
             sendMsg.resourceId = resourceId;
             sendMsg.userProcessId = simPid;
-            sendMessage(createMsgKey(0), sendMsg);
+            sendMessage(sendMsg);
             shouldWaitForMsg = true;
         } else {
             resourceId = getNextReleaseResourceId();
@@ -111,11 +112,11 @@ int main(int argc, char **argv) {
             sendMsg.resourceId = resourceId;
             sendMsg.userProcessId = simPid;
 
-            sendMessage(createMsgKey(0), sendMsg);
+            sendMessage(sendMsg);
             shouldWaitForMsg = false;
         }
         if (shouldWaitForMsg) {
-            recvMsg = recieveMessage(createMsgKey(0));
+            recvMsg = recieveMessage();
             if (recvMsg.type == 1) { // permission granted
                 printf("P%d Received permission from oss for resource %d\n", simPid, recvMsg.resourceId);
             } else if (recvMsg.type == 3){
@@ -133,7 +134,7 @@ int main(int argc, char **argv) {
     sendMsg.type = 3;
     sendMsg.resourceId = 0;
     sendMsg.userProcessId = simPid;
-    sendMessage(createMsgKey(0), sendMsg);
+    sendMessage(sendMsg);
 
     //release
     sem_post(sem);

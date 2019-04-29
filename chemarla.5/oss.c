@@ -157,9 +157,8 @@ int main(int argc, char **argv) {
 
         //increment time
         currentTime = incrementSharedMemory(incrementValue);
-        printf ("oss incrementing the clock %d:%ld\n", currentTime.seconds, currentTime.nseconds);
         //check if a child should be spawned
-        if (shouldCreateChild(currentTime, randTime, childPidArray)) {
+        if (shouldCreateChild(currentTime, randTime, childPidArray) && activeChildren < NUM_USER_PROCESSES) {
             //get open an open pid
             openPid = getOpenSimPid(childPidArray);
             childPidArray[openPid].simPid = openPid;
@@ -168,6 +167,7 @@ int main(int argc, char **argv) {
             child_pid = forkChild(openPid);
             childPidArray[openPid].pid = child_pid;
             randTime = getNextProcessSpawnTime(currentTime);
+            activeChildren++;
         }
 
         //recieve user message
@@ -176,12 +176,14 @@ int main(int argc, char **argv) {
         checkForTerminatedChildren(childPidArray);
 
         if (msg.type == -1) {
-            msg = recieveMessage(createMsgKey(0));
+            msg = recieveMessage();
         }
         if (msg.type == 0) { // request
             if (rdp[msg.resourceId].inUse){
                 // we need wait for release
             } else {
+                printf("Oss received request from P%d  for resource %d\n", msg.userProcessId, msg.resourceId);
+
                 rdp[msg.resourceId].inUse = true;
                 rdp[msg.resourceId].currentOwner = msg.userProcessId;
                 rdp[msg.resourceId].allocated[msg.userProcessId]++;
@@ -189,16 +191,18 @@ int main(int argc, char **argv) {
                 // send a message about grant of the resource
                 sendMsg.type = 1;
                 sendMsg.resourceId = msg.resourceId;
-                sendMessage(createMsgKey(msg.userProcessId), sendMsg);
+                sendMessage(sendMsg);
                 msg.type = -1;
             }
         } else if (msg.type == 2) { // release
+            printf("Oss received release from P%d  for resource %d\n", msg.userProcessId, msg.resourceId);
             if (rdp[msg.resourceId].inUse){
                 rdp[msg.resourceId].inUse = false;
                 rdp[msg.resourceId].currentOwner = 0;
                 msg.type = -1;
             }
         } else if (msg.type == 3) { // user process terminated
+            printf("Oss received terminate from P%d  \n", msg.userProcessId);
             for (i = 0; i < 20; i++){
                 if(rdp[i].currentOwner == msg.userProcessId){
                     rdp[i].inUse = false;
@@ -230,14 +234,7 @@ sem_t *createSem(int resourceId) {
     return sem;
 }
 
-key_t createMsgId(int simPid) {
-    key_t key;
-    int msgId;
 
-    key = ftok("user", simPid);
-    msgId = msgget(key, IPC_CREAT | 0666);
-
-}
 
 bool deadLockFound() {
     return false;
@@ -453,7 +450,7 @@ static void interruptHandler() {
     fclose(out_file);
     const char *semName = "/sem_Chem";
     sem_unlink(semName);
-
+    msgctl(msgId, IPC_RMID, NULL);
     shmctl(clockId, IPC_RMID, NULL); //delete shared memory
     shmctl(resId, IPC_RMID, NULL);
     kill(0, SIGKILL); // kill child process

@@ -6,15 +6,17 @@
 #include <sys/msg.h>
 #include <semaphore.h>
 
-#define NUM_USER_PROCESSES 2
+#define NUM_USER_PROCESSES 1
 //globals
 key_t clockKey = 382910;
 key_t pcbKey = 102938;
 key_t resKey = 111000;
+int msgKey = 000111;
 
 int clockShmId;
 int pcbShmId;
 int resId;
+int msgId;
 
 void clearSharedMemory();
 
