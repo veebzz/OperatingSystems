@@ -13,9 +13,8 @@ $(TARGET2): $(OBJ2)
 
 oss.o: oss.c
 	$(CC) $(CFLAGS) -c oss.c
-user.o: user.c:
+user.o: user.c
 	$(CC) $(CFLAGS) -c user.c
 
-
 clean:
-	/bin/rm -f *.o log.txt all
+	/bin/rm -f *.o $(TARGET1) $(TARGET2)
