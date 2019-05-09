@@ -11,14 +11,15 @@
 
 //globals
 key_t clockKey = 382910;
-key_t pcbKey = 102938;
-key_t resKey = 111000;
-int msgKey = 000111;
+key_t msgKey = 000111;
 
 int clockShmId;
-int pcbShmId;
-int resId;
 int msgId;
+
+struct msgQ {
+    long type;
+    char referenceNumber[100];
+}message;
 
 typedef struct memTime {
     unsigned int seconds;
@@ -45,9 +46,11 @@ int checkForTerminatedChildren(int *array, bool simArray[], int maxActiveChildre
 
 bool shouldExit(int *array, memTime currentTime);
 
+static void interruptHandler();
 
 
 void clearSharedMemory() {
+    msgctl(msgId, IPC_RMID, NULL);
     shmctl(clockShmId, IPC_RMID, NULL);
 }
 

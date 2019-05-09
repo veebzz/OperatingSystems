@@ -16,6 +16,7 @@ Memory Management
 #include <math.h>
 #include <semaphore.h>
 #include <fcntl.h>
+#include <string.h>
 #include "oss.h"
 
 
@@ -46,8 +47,8 @@ int main(int argc, char **argv) {
     while ((optionIndex = getopt(argc, argv, "h:o:n:")) != -1) {
       argHandler(optionIndex, outputFileName, maxActiveChildren);
     }
-    int *childPidArray = malloc(maxActiveChildren * sizeof(int)); // holds real pids
 
+    int *childPidArray = malloc(maxActiveChildren * sizeof(int)); // holds real pids
 
     //Open output file
     out_file = fopen(outputFileName, "a+");
@@ -57,9 +58,18 @@ int main(int argc, char **argv) {
     }
     //start clock in shared mem
     currentTime = startSharedMemory();
+    //message Queue
+    if ((msgId = msgget(msgKey, 0666 | IPC_CREAT)) == -1) {
+        perror("./oss: msgget Error: ");
+        exit(1);
+    }
     //set intial random spawn time to 0 amd set up array keep track of active processes
     setupInitial(randTime, pidArray, maxActiveChildren);
 
+    //Signal
+    signal(SIGALRM, interruptHandler);//timed interrupt
+    signal(SIGINT, interruptHandler);//ctrl-c interrupt
+    alarm(100);
     //OSS control
     while(true){
         //increment time
@@ -77,7 +87,21 @@ int main(int argc, char **argv) {
             *(childPidArray + openPid) = child_pid;
             //get random spawn interval time
             randTime = getNextProcessSpawnTime(currentTime);
+            msgrcv(msgId, &message, sizeof(message), 1, IPC_NOWAIT);
+            if(atoi(message.referenceNumber) > 0) {
+                printf("MESSAGE QUEUE: %d\n", atoi(message.referenceNumber));
+            }
         }
+        //message queue
+//        if (msgrcv(msgId, &message, sizeof(message), 1, 0) == -1) {
+//            perror("./oss: msgrcv error");
+//            exit(1);
+//        }
+//        msgrcv(msgId, &message, sizeof(message), 1, IPC_NOWAIT);
+//        if(atoi(message.referenceNumber) > 0) {
+//            printf("MESSAGE QUEUE: %d\n", atoi(message.referenceNumber));
+//        }
+
         //check for terminated children
         activeChildren = checkForTerminatedChildren(childPidArray, pidArray, maxActiveChildren);
 
@@ -89,6 +113,8 @@ int main(int argc, char **argv) {
 
     clearSharedMemory();
     free(childPidArray);
+    msgctl(msgId, IPC_RMID, NULL);
+    shmctl(clockShmId, IPC_RMID, NULL);
     printf("Parent[%d] Finished\n", getpid());
     return 0;
 }
@@ -117,6 +143,9 @@ memTime startSharedMemory() {
     (*sharedClockPtr).nseconds = 0;
     //detach
     shmdt(sharedClockPtr);
+
+
+
 }
 
 memTime incrementSharedMemory(int value) {
@@ -162,6 +191,7 @@ memTime incrementSharedMemory(int value) {
 }
 
 void argHandler(int optionIndex, char* outputFileName,int maxActiveChildren){
+    printf("in arg handler\n");
     switch (optionIndex) {
         case 'h':
             printf("List of valid command line argument usage\n");
@@ -298,10 +328,22 @@ bool shouldExit(int *array, memTime currentTime) {
 //        }
 //    }
 //
-    if(currentTime.seconds >= 30){
+    if(currentTime.seconds >= 10){
         return true;
     }
 
     //exit requirement met
     return false;
+}
+
+static void interruptHandler() {
+    key_t clockKey = 102938;
+
+    int clockId = shmget(clockKey, 2 * sizeof(int), IPC_CREAT | 0666);
+
+    fclose(out_file);
+    msgctl(msgId, IPC_RMID, NULL);
+    shmctl(clockShmId, IPC_RMID, NULL); //delete shared memory
+    kill(0, SIGKILL); // kill child process
+    exit(0);
 }

@@ -17,18 +17,28 @@ memTime checkSharedMemory();
 
 
 
+
 int main(int argc, char **argv) {
     int *sharedInt;
     memTime currentTime, randTime;
     int simPid;
-    const char *semName = "/sem_Chem";
 
     simPid = atoi(argv[1]);
     currentTime = checkSharedMemory();
 
-    printf("IN Child %d \n", simPid);
+
+    printf("%d IN Child %d \n", getpid(), simPid);
     randTime.seconds = currentTime.seconds + 3;
     randTime.nseconds = currentTime.nseconds;
+    if ((msgId = msgget(msgKey, 0666 | IPC_CREAT)) == -1) {
+        perror("./user: msgget Error: ");
+        exit(1);
+    }
+
+
+    message.type = 1;
+    sprintf(message.referenceNumber, "%d", getpid());
+
     while(true){
         currentTime = checkSharedMemory();
 
@@ -36,8 +46,14 @@ int main(int argc, char **argv) {
             break;
         }
     }
-    printf("Child %d  Exiting\n", simPid);
 
+    //send message
+    if ((msgsnd(msgId, &message, sizeof(message), 0))== -1) {
+        perror("./user: msgsnd error: ");
+        exit(1);
+    }
+
+    printf("Child %d  Exiting: sending %d\n", simPid, getpid());
 
     return 0;
 
@@ -51,19 +67,17 @@ memTime checkSharedMemory() {
     unsigned int nextSeconds;
 
 
-
-
     int shmid = shmget(clockKey, 2 * sizeof(unsigned int), IPC_CREAT | 0666); /* return value from shmget() */
 
     if (shmid < 0) {
         perror("\n./user: shmid error: ");
-        clearSharedMemory();
+        clearSharedMemory(msgId);
         exit(-1);
     }
     sharedInt = shmat(shmid, NULL, 0);      //assign shared memory to sharedInt pointer
     if (*sharedInt == -1) {
         perror("./user: shmat error: ");
-        clearSharedMemory();
+        clearSharedMemory(msgId);
         exit(-1);
     }
 
