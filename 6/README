@@ -1,4 +1,4 @@
-CS 4760 Assignment #5
+CS 4760 Assignment #6
 
 
 --Usage--
@@ -12,6 +12,7 @@ The program will create an executable files called "oss" and "user" . To execute
 
 ./oss  -h   #Will display all possible options and their descriptions
 
+./oss  -n <Argument> #Optional argument can be given to set the max concurrent process limit between 0 - 18.
 
 Program for now can just be called without any arguments, which will default to 18 max active processes, and default output file
 called log.txt.
@@ -29,15 +30,6 @@ make clean
 Github was used as version control for this assignment. The link to this assignments version control is (https://github.com/veebzz/OperatingSystems/commits/master).
 
 --Existing Problems--
--my life
--The Entire Program will currently result in segfault
 
--Rework arguments so that
-
-
--Things not yet Implemented
-    -Working message queue system
-    -Deadlock algorithm/recovery
-    -Verbose option
-        -Keeping Statistics
-        -Writing to log
+-Need to implement memory management. Instructions are not perfectly clear, so it is hard to understand how to implement this.
+    - logging.

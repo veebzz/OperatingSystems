@@ -14,19 +14,21 @@
 
 memTime checkSharedMemory();
 
-
-
+int randTermination();
+frameStruct request(int simPid);
 
 
 int main(int argc, char **argv) {
     int *sharedInt;
     memTime currentTime, randTime;
-    int simPid;
+    int simPid, referenceCounter, terminateCondition;
+
+    srand(getpid());
 
     simPid = atoi(argv[1]);
     currentTime = checkSharedMemory();
 
-
+    terminateCondition = randTermination();
     printf("%d IN Child %d \n", getpid(), simPid);
     randTime.seconds = currentTime.seconds + 3;
     randTime.nseconds = currentTime.nseconds;
@@ -37,21 +39,36 @@ int main(int argc, char **argv) {
 
 
     message.type = 1;
-    sprintf(message.referenceNumber, "%d", getpid());
+    sprintf(message.referenceNumber, "%d", simPid);
+
 
     while(true){
+        //get up to date time
         currentTime = checkSharedMemory();
+        //prepare a memory reference request
+        message.frame = request(simPid);
+        //count references
+        referenceCounter++;
+        //send message to oss
+        if ((msgsnd(msgId, &message, sizeof(message), 0))== -1) {
+            perror("./user: msgsnd error: ");
+            exit(1);
+        }
 
-        if((currentTime.seconds * BILLION) + currentTime.nseconds >= (randTime.seconds * BILLION) + randTime.nseconds){
+        //wait for oss to send page hit or page fault
+        msgrcv(msgId, &message, sizeof(message), simPid, 0);
+        //if memory reference 1000 +/- 100
+        if(referenceCounter == terminateCondition){
             break;
         }
     }
 
-    //send message
-    if ((msgsnd(msgId, &message, sizeof(message), 0))== -1) {
-        perror("./user: msgsnd error: ");
-        exit(1);
-    }
+//    //send message
+//    if ((msgsnd(msgId, &message, sizeof(message), 0))== -1) {
+//        perror("./user: msgsnd error: ");
+//        exit(1);
+//    }
+
 
     printf("Child %d  Exiting: sending %d\n", simPid, getpid());
 
@@ -102,3 +119,39 @@ memTime checkSharedMemory() {
 
 }
 
+frameStruct request(int simPid){
+    int readWrite;
+    frameStruct frameInstance;
+    srand(simPid + getpid());
+    frameInstance.pid = simPid;
+    //memory reference 0 to less than 32 k
+    frameInstance.referenceByte = rand() % (32000-1);
+    // READ or WRITE
+    readWrite = rand() % 101; //0-100
+
+    if(readWrite > 50){
+        //Write
+        frameInstance.dirtyBit = 1;
+    }else if (readWrite <= 50){
+        //Read
+        frameInstance.dirtyBit = 0;
+    }
+
+
+}
+
+int randTermination(){
+    int number, sign;
+    srand(getpid());
+    sign = rand() % 1;
+    number = rand() % 101;
+
+    if(sign == 1){
+       //plus
+       number = 1000 + number;
+    }else{
+        number = 1000 - number;
+    }
+
+    return number;
+}

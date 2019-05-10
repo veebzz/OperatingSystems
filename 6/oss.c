@@ -24,7 +24,8 @@ Memory Management
 #define MILLION  1e6
 #define MAXTIMEBETWEENNEWPROCSSECS 1
 #define MAXTIMEBETWEENNEWPROCSNSECS 500000000
-#define BASETIMEQUANTUM 10000
+#define PROCESSMAX 32
+#define TOTALMEMORY 256
 
 
 FILE *out_file;
@@ -40,13 +41,16 @@ int main(int argc, char **argv) {
     int openPid;
     pid_t child_pid, wait_pid;
     memTime currentTime, randTime;
-    bool pidArray[maxActiveChildren]; // holds simulated pids
 
 
     //check if arguments are given
     while ((optionIndex = getopt(argc, argv, "h:o:n:")) != -1) {
       argHandler(optionIndex, outputFileName, maxActiveChildren);
     }
+
+    bool pidArray[maxActiveChildren]; // holds simulated pids
+    frameStruct* frameTable[TOTALMEMORY];
+    pageStruct* pageTable[maxActiveChildren];
 
     int *childPidArray = malloc(maxActiveChildren * sizeof(int)); // holds real pids
 
@@ -63,8 +67,8 @@ int main(int argc, char **argv) {
         perror("./oss: msgget Error: ");
         exit(1);
     }
-    //set intial random spawn time to 0 amd set up array keep track of active processes
-    setupInitial(randTime, pidArray, maxActiveChildren);
+    //set initial random spawn time to 0 amd set up array keep track of active processes
+    setupInitial(randTime, pidArray, maxActiveChildren, frameTable, pageTable);
 
     //Signal
     signal(SIGALRM, interruptHandler);//timed interrupt
@@ -87,20 +91,21 @@ int main(int argc, char **argv) {
             *(childPidArray + openPid) = child_pid;
             //get random spawn interval time
             randTime = getNextProcessSpawnTime(currentTime);
+            //recieve the first message struct from the queue
             msgrcv(msgId, &message, sizeof(message), 1, IPC_NOWAIT);
-            if(atoi(message.referenceNumber) > 0) {
-                printf("MESSAGE QUEUE: %d\n", atoi(message.referenceNumber));
+            if ((msgsnd(msgId, &message, sizeof(message), 0))== -1) {
+                perror("./user: msgsnd error: ");
+                exit(1);
             }
+
+            //check if simPid of exists in project table
+
+
+//            if(atoi(message.referenceNumber) > 0) {
+//                printf("MESSAGE QUEUE: %d\n", atoi(message.referenceNumber));
+//            }
         }
-        //message queue
-//        if (msgrcv(msgId, &message, sizeof(message), 1, 0) == -1) {
-//            perror("./oss: msgrcv error");
-//            exit(1);
-//        }
-//        msgrcv(msgId, &message, sizeof(message), 1, IPC_NOWAIT);
-//        if(atoi(message.referenceNumber) > 0) {
-//            printf("MESSAGE QUEUE: %d\n", atoi(message.referenceNumber));
-//        }
+
 
         //check for terminated children
         activeChildren = checkForTerminatedChildren(childPidArray, pidArray, maxActiveChildren);
@@ -261,16 +266,28 @@ int getOpenSimPid(int maxActiveChildren, bool pidArray[]) {
     return 0;
 }
 
-void setupInitial(memTime randTime, bool pidArray[], int maxActiveChildren){
+void setupInitial(memTime randTime, bool pidArray[], int maxActiveChildren, frameStruct frameTable[], pageStruct pageTable[]){
     int i;
-
+    //simulated pids
     for (i = 0; i < maxActiveChildren; i++) {
         //set all elements to true to indicate availability
         pidArray[i] = true;
     }
-
+    //initial random spawn time
     randTime.seconds = 0;
     randTime.nseconds = 0;
+    //initial page Table
+    for(i = 0; i < maxActiveChildren; i++){
+        pageTable->pages[i] = -1;
+    }
+    //initial frame Table
+    for(i = 0; i < TOTALMEMORY; i++){
+       frameTable->pid = -1;
+       frameTable->dirtyBit = -1;
+       frameTable->referenceByte = -1;
+    }
+
+
 
 }
 
@@ -294,6 +311,7 @@ pid_t forkChild(int openPid) {
     }
     return child_pid;
 }
+
 int checkForTerminatedChildren(int* array, bool simArray[], int maxActiveChildren) {
     int i = 0;
     int status;
@@ -347,3 +365,10 @@ static void interruptHandler() {
     kill(0, SIGKILL); // kill child process
     exit(0);
 }
+
+//int checkIfPageExists(pageStruct pageTable, int simPid){
+//    int index;
+//    for(index = 0; index < PROCESSMAX; index++){
+//        pageTable[index].
+//    }
+//}
